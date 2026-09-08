@@ -43,8 +43,13 @@ internal sealed class MainForm : Form
     private readonly KeyTablePanel _keyPanel = new();
     private readonly CalibPanel _calib = new();
 
-    private readonly DataGridView _gridResult = Ui.Grid();
-    private readonly BindingList<UnitResult> _rows = new();
+    private readonly RichTextBox _rtResult = new()
+    {
+        Dock = DockStyle.Fill, ReadOnly = true, BackColor = Color.White,
+        Font = new Font("Consolas", 9.5f), WordWrap = false,
+        ScrollBars = RichTextBoxScrollBars.Both, BorderStyle = BorderStyle.None,
+    };
+    private readonly List<UnitResult> _runResults = new();
     private readonly NumericUpDown _nudInterval = Ui.Num(0, 500, 2);
     private readonly NumericUpDown _nudSettle = Ui.Num(0, 3000, 40);
     private readonly CheckBox _cbOnlyError = new() { Text = "只看错误", Checked = true, AutoSize = true, Margin = new Padding(10, 10, 6, 0) };
@@ -85,7 +90,6 @@ internal sealed class MainForm : Form
         RestoreWindowSize();
         RestoreRunOptions();
 
-        BuildResultGrid();
         _statusBar.Controls.Add(_lblStatus);
         Controls.Add(BuildRoot());
         Controls.Add(_statusBar);
@@ -165,13 +169,13 @@ internal sealed class MainForm : Form
         var gbStats = new GroupBox { Text = "实时统计", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(4, 0, 4, 2) };
         gbStats.Controls.Add(_lblStats);
 
-        // 逐句对照（占据剩余全部空间）
+        // 逐句对照（占据剩余全部空间）：富文本三行式条目，错处标色
         var gbResult = new GroupBox { Text = "逐句对照", Dock = DockStyle.Fill, Padding = new Padding(6, 2, 6, 6) };
-        var resultInner = new Panel { Dock = DockStyle.Fill };
         var resultBtns = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38, WrapContents = false };
         resultBtns.Controls.Add(_cbOnlyError);
         _cbOnlyError.CheckedChanged += (_, _) => RebuildRows();
-        resultInner.Controls.Add(_gridResult);
+        var resultInner = new Panel { Dock = DockStyle.Fill };
+        resultInner.Controls.Add(_rtResult);
         resultInner.Controls.Add(resultBtns);
         gbResult.Controls.Add(resultInner);
 
@@ -188,27 +192,14 @@ internal sealed class MainForm : Form
         return container;
     }
 
-    private void BuildResultGrid()
-    {
-        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "#", DataPropertyName = "Index", FillWeight = 6 });
-        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "按键串", DataPropertyName = "Keys", FillWeight = 30 });
-        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "期望", DataPropertyName = "Expected", FillWeight = 28 });
-        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "实际", DataPropertyName = "Actual", FillWeight = 28 });
-        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "S", DataPropertyName = "Sub", FillWeight = 3 });
-        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "D", DataPropertyName = "Del", FillWeight = 3 });
-        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "I", DataPropertyName = "Ins", FillWeight = 3 });
-        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "上屏", DataPropertyName = "CommitEvents", FillWeight = 5 });
-        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "耗时ms", DataPropertyName = "Ms", FillWeight = 7 });
-        _gridResult.DataSource = _rows;
-    }
-
     private void WireEvents()
     {
         _corpus.Compiled += table =>
         {
             _table = table;
             _keyPanel.Bind(table);
-            _rows.Clear();
+            _runResults.Clear();
+            _rtResult.Clear();
             Log($"按键表已生成：{table.UnitCount} 个上屏单元 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字");
             _tabs.SelectedIndex = 1;   // 跳到按键表页
         };
@@ -229,7 +220,8 @@ internal sealed class MainForm : Form
         if (_running) { Log("正在运行中。"); return; }
         if (_table == null) { Log("还没有按键表——请先到【语料】页编译。"); return; }
 
-        _rows.Clear();
+        _runResults.Clear();
+        _rtResult.Clear();
         _running = true;
         UpdateButtons();
         if (!await EnsureHostReadyAsync())
@@ -285,22 +277,71 @@ internal sealed class MainForm : Form
     {
         if (InvokeRequired) { BeginInvoke(new Action<UnitResult>(OnUnitDone), u); return; }
 
-        if (!u.Correct || !_cbOnlyError.Checked) _rows.Add(u);
+        _runResults.Add(u);
+        if (!u.Correct || !_cbOnlyError.Checked) AppendResult(u);
         if (u.AutoCommit) _keyPanel.MarkAutoCommit(u.Index);
         if (_lblStats.Parent != null && _runner != null)
             _lblStats.Text = FormatSummary(_runner.Live.Summary());
+    }
+
+    /// <summary>把一条结果按三行式追加到逐句对照：头部信息 / 按键串 / 期望（标错）/ 实际（标错）。</summary>
+    private void AppendResult(UnitResult u)
+    {
+        AppendRt($"{u.Index + 1}. ", Color.DimGray);
+        AppendRt(u.Correct ? "✓ " : "✗ ", u.Correct ? Color.Green : Color.Red);
+        AppendRt($"S{u.Sub} D{u.Del} I{u.Ins}  {u.Ms}ms  上屏{u.CommitEvents}" + (u.AutoCommit ? " 自动上屏" : ""),
+                 u.Correct ? Color.DimGray : Color.Black);
+        AppendRt(Environment.NewLine, Color.Black);
+
+        var (markedExpected, markedActual) = Levenshtein.Mark(u.Expected, u.Actual);
+        AppendMarked("   按键串  ", u.Keys);
+        AppendMarked("   期望    ", markedExpected);
+        AppendMarked("   实际    ", markedActual);
+        AppendRt(Environment.NewLine + Environment.NewLine, Color.Black);
+    }
+
+    /// <summary>追加一段文本，[ ] 括起的部分用红色显示（括号本身不显示）。</summary>
+    private void AppendMarked(string prefix, string marked)
+    {
+        AppendRt(prefix, Color.DimGray);
+        bool inError = false;
+        var sb = new System.Text.StringBuilder();
+
+        void Flush()
+        {
+            if (sb.Length == 0) return;
+            AppendRt(sb.ToString(), inError ? Color.Red : _rtResult.ForeColor);
+            sb.Clear();
+        }
+
+        foreach (char c in marked)
+        {
+            if (c == '[') { Flush(); inError = true; continue; }
+            if (c == ']') { Flush(); inError = false; continue; }
+            sb.Append(c);
+        }
+        Flush();
+        AppendRt(Environment.NewLine, Color.Black);
+    }
+
+    private void AppendRt(string s, Color color)
+    {
+        _rtResult.SelectionStart = _rtResult.TextLength;
+        _rtResult.SelectionColor = color;
+        _rtResult.AppendText(s);
+        _rtResult.SelectionColor = _rtResult.ForeColor;
     }
 
     /// <summary>把一行式统计摘要按分号折成 5 行，实时统计区更好读。</summary>
     private static string FormatSummary(string s)
         => s.Replace("；", "；\n");
 
+    /// <summary>按「只看错误」筛选重新渲染全部结果。</summary>
     private void RebuildRows()
     {
-        if (_last == null) return;
-        _rows.Clear();
-        foreach (var u in _last.Units)
-            if (!u.Correct || !_cbOnlyError.Checked) _rows.Add(u);
+        _rtResult.Clear();
+        foreach (var u in _runResults)
+            if (!u.Correct || !_cbOnlyError.Checked) AppendResult(u);
     }
 
     // ───────────────────────── 标定 ─────────────────────────
