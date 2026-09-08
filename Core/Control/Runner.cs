@@ -145,6 +145,11 @@ public sealed class Runner
     /// <summary>本轮检测到高置信度自动上屏而跳过上屏键的句数。</summary>
     public int AutoCommitSkips => _player.AutoCommitSkips;
 
+    private int _commitStart;
+
+    /// <summary>当前句已发生的 IME 提交次数（供 UI 高频刷新，实时显示上屏进度）。</summary>
+    public int LiveCommits => Math.Max(0, _verify.SnapshotCommitEvents() - _commitStart);
+
     private void RunLoop(KeyTable table, RunOptions opt, int startIndex, RunResult result)
     {
         var pacer = new Pacer { IntervalMs = opt.IntervalMs };
@@ -167,7 +172,7 @@ public sealed class Runner
             });
 
             _verify.Reset();
-            int commitStart = _verify.SnapshotCommitEvents();   // 本句开始时的 IME 提交计数
+            _commitStart = _verify.SnapshotCommitEvents();      // 本句开始时的 IME 提交计数
             pacer.Reset();
             sw.Restart();
 
@@ -199,7 +204,7 @@ public sealed class Runner
 
             var ur = _verify.Compare(i, unit.DisplayText, expected, actual, sw.ElapsedMilliseconds);
             ur.AutoCommit = autoCommit;
-            ur.CommitEvents = Math.Max(0, _verify.SnapshotCommitEvents() - commitStart);
+            ur.CommitEvents = Math.Max(0, _verify.SnapshotCommitEvents() - _commitStart);
 
             result.Units.Add(ur);
             result.Stats.ElapsedMs += ur.Ms;

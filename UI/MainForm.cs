@@ -460,6 +460,13 @@ internal sealed class MainForm : Form
         bool foreground = GetForegroundWindow() == Handle;
         bool focused = _host.Focused;
 
+        // 运行中每 500ms 刷新一次实时统计（含句中已发生的 IME 提交次数）
+        if (_running && _runner != null)
+        {
+            _runner.Live.CommitEvents = _runner.LiveCommits;
+            _lblStats.Text = FormatSummary(_runner.Live.Summary());
+        }
+
         _lblStatus.Text = $"SendInput {InputSender.StructSize}B {(structOk ? "OK" : "错误!")}"
                         + $" | 前台 {(foreground ? "本窗口" : "其他")}"
                         + $" | 宿主焦点 {(focused ? "有" : "无")}"
