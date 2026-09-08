@@ -167,6 +167,7 @@ public sealed class Runner
             });
 
             _verify.Reset();
+            int commitStart = _verify.SnapshotCommitEvents();   // 本句开始时的 IME 提交计数
             pacer.Reset();
             sw.Restart();
 
@@ -198,6 +199,7 @@ public sealed class Runner
 
             var ur = _verify.Compare(i, unit.DisplayText, expected, actual, sw.ElapsedMilliseconds);
             ur.AutoCommit = autoCommit;
+            ur.CommitEvents = Math.Max(0, _verify.SnapshotCommitEvents() - commitStart);
 
             result.Units.Add(ur);
             result.Stats.ElapsedMs += ur.Ms;
@@ -213,6 +215,7 @@ public sealed class Runner
             Live.Sub = result.Stats.Sub;
             Live.Del = result.Stats.Del;
             Live.Ins = result.Stats.Ins;
+            Live.CommitEvents = result.Stats.CommitEvents;
             Live.ElapsedMs = result.Stats.ElapsedMs;
 
             UnitDone?.Invoke(ur);

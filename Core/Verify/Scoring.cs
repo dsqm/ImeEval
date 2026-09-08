@@ -90,6 +90,9 @@ public sealed class UnitResult
     /// <summary>true = 输入法高置信度自动上屏，本次跳过了上屏键。</summary>
     public bool AutoCommit { get; set; }
 
+    /// <summary>本句期间 IME 真正提交文本的次数（GCS_RESULTSTR 事件数；一字一屏=字数，整句一屏=1）。</summary>
+    public int CommitEvents { get; set; }
+
     public int Errors => Sub + Del + Ins;
     public bool Correct => Errors == 0;
 
@@ -114,6 +117,9 @@ public sealed class BenchStats
     public int Ins { get; set; }
     public long ElapsedMs { get; set; }
 
+    /// <summary>IME 真正提交文本的事件总数（GCS_RESULTSTR 次数；一字一屏会远大于句数）。</summary>
+    public int CommitEvents { get; set; }
+
     public int ErrorChars => Sub + Del + Ins;
 
     public double Cer => ExpectedChars == 0 ? 0 : (double)ErrorChars / ExpectedChars;
@@ -134,6 +140,7 @@ public sealed class BenchStats
         Sub += u.Sub;
         Del += u.Del;
         Ins += u.Ins;
+        CommitEvents += u.CommitEvents;
 
         _openErrors += u.Errors;
         if (closesSentence)
@@ -158,14 +165,15 @@ public sealed class BenchStats
         Sub = o.Sub;
         Del = o.Del;
         Ins = o.Ins;
+        CommitEvents = o.CommitEvents;
         ElapsedMs = o.ElapsedMs;
         _openErrors = 0;
     }
 
     public string Summary()
-        => $"上屏 {DoneUnits} 次，错 {ErrorUnits} 次（SER {Ser:P2}）；" +
+        => $"上屏 {DoneUnits} 句，IME 实际提交 {CommitEvents} 次，错 {ErrorUnits} 句（SER {Ser:P2}）；" +
            $"期望 {ExpectedChars} 字，错 {ErrorChars} 字（CER {Cer:P2}，准确率 {Accuracy:P2}）；" +
            $"替换 {Sub} / 删除 {Del} / 插入 {Ins}；" +
            $"自然句 {DoneSentences} 句，错 {ErrorSentences} 句（SER {SentenceSer:P2}）；" +
-           $"耗时 {ElapsedMs / 1000.0:F1}s（{UnitsPerSec:F1} 次上屏/秒）";
+           $"耗时 {ElapsedMs / 1000.0:F1}s（{UnitsPerSec:F1} 句/秒）";
 }

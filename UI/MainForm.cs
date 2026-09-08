@@ -196,6 +196,7 @@ internal sealed class MainForm : Form
         _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "S", DataPropertyName = "Sub", FillWeight = 3 });
         _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "D", DataPropertyName = "Del", FillWeight = 3 });
         _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "I", DataPropertyName = "Ins", FillWeight = 3 });
+        _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "上屏", DataPropertyName = "CommitEvents", FillWeight = 5 });
         _gridResult.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "耗时ms", DataPropertyName = "Ms", FillWeight = 7 });
         _gridResult.DataSource = _rows;
     }

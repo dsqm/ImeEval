@@ -15,6 +15,9 @@ public interface IUpTextSink
 
     /// <summary>线程安全地夺回键盘焦点。</summary>
     void FocusSafe();
+
+    /// <summary>IME 提交事件计数快照（GCS_RESULTSTR 累计次数，线程安全）。</summary>
+    int SnapshotCommitEvents();
 }
 
 /// <summary>
@@ -33,6 +36,9 @@ public sealed class Verifier
 
     /// <summary>单元开跑前把宿主清干净（含 IME 残留的半截 composition）。</summary>
     public void Reset() => _sink.ResetSafe();
+
+    /// <summary>IME 提交事件计数快照（GCS_RESULTSTR 累计次数，透传宿主计数）。</summary>
+    public int SnapshotCommitEvents() => _sink.SnapshotCommitEvents();
 
     /// <summary>夺回焦点，保证后续按键确实打给宿主。</summary>
     public void Focus() => _sink.FocusSafe();

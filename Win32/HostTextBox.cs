@@ -46,6 +46,12 @@ public sealed class ImeHost : RichTextBox, IUpTextSink
     // 观测计数器
     public int StartCount, CompCount, EndCount, ResultCount;
 
+    /// <summary>
+    /// IME 提交事件计数快照（GCS_RESULTSTR 累计次数），线程安全。
+    /// 每次 IME 真正把文本提交进宿主都会 +1：一字一屏 = 字数次，整句一屏 = 1。
+    /// </summary>
+    public int SnapshotCommitEvents() => Volatile.Read(ref ResultCount);
+
     public void Reset()
     {
         _committed.Clear();

@@ -35,6 +35,7 @@ public static class Exporter
                 sub = result.Stats.Sub,
                 del = result.Stats.Del,
                 ins = result.Stats.Ins,
+                commitEvents = result.Stats.CommitEvents,
                 elapsedMs = result.Stats.ElapsedMs,
             },
             reason = result.ReasonText,
@@ -51,7 +52,7 @@ public static class Exporter
     {
         var sb = new StringBuilder();
         sb.Append('\uFEFF'); // BOM，Excel 直接双击不乱码
-        sb.AppendLine("序号,按键串,期望,实际,正确,替换,删除,插入,错字数,耗时ms");
+        sb.AppendLine("序号,按键串,期望,实际,正确,替换,删除,插入,错字数,IME上屏事件,耗时ms");
         foreach (var u in result.Units)
         {
             sb.Append(u.Index).Append(',');
@@ -60,7 +61,7 @@ public static class Exporter
             sb.Append(Q(u.Actual)).Append(',');
             sb.Append(u.Correct ? "是" : "否").Append(',');
             sb.Append(u.Sub).Append(',').Append(u.Del).Append(',').Append(u.Ins).Append(',');
-            sb.Append(u.Errors).Append(',').Append(u.Ms);
+            sb.Append(u.Errors).Append(',').Append(u.CommitEvents).Append(',').Append(u.Ms);
             sb.AppendLine();
         }
 
@@ -69,6 +70,7 @@ public static class Exporter
         sb.AppendLine("SER," + result.Stats.Ser.ToString("P4", CultureInfo.InvariantCulture));
         sb.AppendLine("错字数," + result.Stats.ErrorChars);
         sb.AppendLine("期望字数," + result.Stats.ExpectedChars);
+        sb.AppendLine("IME上屏事件总数," + result.Stats.CommitEvents);
         sb.AppendLine("替换," + result.Stats.Sub);
         sb.AppendLine("删除," + result.Stats.Del);
         sb.AppendLine("插入," + result.Stats.Ins);
@@ -105,7 +107,8 @@ public static class Exporter
         Card(sb, "CER 错字率", s.Cer.ToString("P2"), s.Cer < 0.02);
         Card(sb, "SER 错句率", s.Ser.ToString("P2"), s.Ser < 0.1);
         Card(sb, "准确率", s.Accuracy.ToString("P2"), s.Accuracy > 0.98);
-        Card(sb, "上屏次数", s.DoneUnits.ToString(), true);
+        Card(sb, "上屏句数", s.DoneUnits.ToString(), true);
+        Card(sb, "IME上屏事件", s.CommitEvents.ToString(), true);
         Card(sb, "错字数", s.ErrorChars.ToString(), s.ErrorChars == 0);
         Card(sb, "替换/删除/插入", $"{s.Sub}/{s.Del}/{s.Ins}", s.ErrorChars == 0);
         sb.AppendLine("</div>");
