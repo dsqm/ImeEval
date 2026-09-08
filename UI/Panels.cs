@@ -117,9 +117,6 @@ internal sealed class CorpusPanel : UserControl
 
     public event Action<KeyTable>? Compiled;
 
-    /// <summary>点「跳转到运行」（语料页顶部）时触发（主窗体切到按键表页）。</summary>
-    public event Action? GoRunRequested;
-
     /// <summary>应用设置（含窗口大小记忆），供主窗体读写。</summary>
     public CorpusSettings Settings => _settings;
 
@@ -155,7 +152,7 @@ internal sealed class CorpusPanel : UserControl
         {
             Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 44),
         };
-        rowNav.Controls.Add(Ui.Btn("跳转到运行", (_, _) => GoRunRequested?.Invoke()));
+        rowNav.Controls.Add(Ui.Btn("生成按键表", (_, _) => Compile()));
 
         // 行 1：码表（data\码表\ 下拉选择，选中即载入）
         var rowCode = new FlowLayoutPanel
@@ -369,20 +366,16 @@ internal sealed class KeyTablePanel : UserControl
     /// <summary>点「跳转到运行」时触发（主窗体切到运行页）。</summary>
     public event Action? GoRunRequested;
 
-    /// <summary>点「生成按键表」（按键表页）时触发（主窗体调语料页编译）。</summary>
-    public event Action? GenerateRequested;
-
     public KeyTablePanel()
     {
         Dock = DockStyle.Fill;
 
-        // 顶部工具栏：「生成按键表」与运行页「开始」同位（三击直达），旁边保留跳转
+        // 顶部工具栏：「跳转到运行」与运行页「开始」同位（三击直达）
         var buttons = new FlowLayoutPanel
         {
             Dock = DockStyle.Top, WrapContents = true, AutoSize = true,
             MinimumSize = new Size(0, 44), Padding = new Padding(3),
         };
-        buttons.Controls.Add(Ui.Btn("生成按键表", (_, _) => GenerateRequested?.Invoke()));
         buttons.Controls.Add(Ui.Btn("跳转到运行", (_, _) => GoRunRequested?.Invoke()));
 
         var inner = new Panel { Dock = DockStyle.Fill };

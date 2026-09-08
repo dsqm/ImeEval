@@ -194,11 +194,9 @@ internal sealed class MainForm : Form
             _runResults.Clear();
             _rtResult.Clear();
             Log($"按键表已生成：{table.UnitCount} 个上屏单元 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字");
-            _tabs.SelectedIndex = 2;   // 生成后直接落运行页——三击流程的最后一跳（预览在按键表页仍可回看）
+            _tabs.SelectedIndex = 1;   // 生成完跳到按键表页预览（下一跳：按键表页「跳转到运行」）
         };
-        _keyPanel.GenerateRequested += () => _corpus.Compile();   // 按键表页的「生成按键表」复用语料页编译
         _keyPanel.GoRunRequested += () => _tabs.SelectedIndex = 2;   // 跳到运行页
-        _corpus.GoRunRequested += () => _tabs.SelectedIndex = 1;   // 语料页跳到按键表页
 
         _calib.StartRequested += (_, _) => _ = RunCalibAsync();
         _calib.Recommended += ms =>
