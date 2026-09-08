@@ -18,6 +18,9 @@ public interface IUpTextSink
 
     /// <summary>IME 提交事件计数快照（GCS_RESULTSTR 累计次数，线程安全）。</summary>
     int SnapshotCommitEvents();
+
+    /// <summary>取自 fromIndex 起的提交文本段（每次上屏的内容），线程安全。</summary>
+    IReadOnlyList<string> ReadCommitEvents(int fromIndex);
 }
 
 /// <summary>
@@ -39,6 +42,9 @@ public sealed class Verifier
 
     /// <summary>IME 提交事件计数快照（GCS_RESULTSTR 累计次数，透传宿主计数）。</summary>
     public int SnapshotCommitEvents() => _sink.SnapshotCommitEvents();
+
+    /// <summary>取自 fromIndex 起的提交文本段（每次上屏的内容）。</summary>
+    public IReadOnlyList<string> ReadCommitEvents(int fromIndex) => _sink.ReadCommitEvents(fromIndex);
 
     /// <summary>夺回焦点，保证后续按键确实打给宿主。</summary>
     public void Focus() => _sink.FocusSafe();

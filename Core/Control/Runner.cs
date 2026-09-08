@@ -204,7 +204,9 @@ public sealed class Runner
 
             var ur = _verify.Compare(i, unit.DisplayText, expected, actual, sw.ElapsedMilliseconds);
             ur.AutoCommit = autoCommit;
-            ur.CommitEvents = Math.Max(0, _verify.SnapshotCommitEvents() - _commitStart);
+            var segments = _verify.ReadCommitEvents(_commitStart);
+            ur.CommitSegments = segments.ToList();
+            ur.CommitEvents = segments.Count;
 
             result.Units.Add(ur);
             result.Stats.ElapsedMs += ur.Ms;

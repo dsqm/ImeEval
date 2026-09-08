@@ -52,7 +52,7 @@ public static class Exporter
     {
         var sb = new StringBuilder();
         sb.Append('\uFEFF'); // BOM，Excel 直接双击不乱码
-        sb.AppendLine("序号,按键串,期望,实际,正确,替换,删除,插入,错字数,IME上屏事件,耗时ms");
+        sb.AppendLine("序号,按键串,期望,实际,正确,替换,删除,插入,错字数,IME上屏事件,上屏明细,耗时ms");
         foreach (var u in result.Units)
         {
             sb.Append(u.Index).Append(',');
@@ -61,7 +61,8 @@ public static class Exporter
             sb.Append(Q(u.Actual)).Append(',');
             sb.Append(u.Correct ? "是" : "否").Append(',');
             sb.Append(u.Sub).Append(',').Append(u.Del).Append(',').Append(u.Ins).Append(',');
-            sb.Append(u.Errors).Append(',').Append(u.CommitEvents).Append(',').Append(u.Ms);
+            sb.Append(u.Errors).Append(',').Append(u.CommitEvents).Append(',');
+            sb.Append(Q(string.Join(" ", u.CommitSegments))).Append(',').Append(u.Ms);
             sb.AppendLine();
         }
 

@@ -46,17 +46,28 @@ public sealed class ImeHost : RichTextBox, IUpTextSink
     // 观测计数器
     public int StartCount, CompCount, EndCount, ResultCount;
 
+    private readonly object _commitLogLock = new();
+    private readonly List<string> _commitLog = new();   // 每次 IME 提交的文本段（与 ResultCount 一一对应）
+
     /// <summary>
     /// IME 提交事件计数快照（GCS_RESULTSTR 累计次数），线程安全。
     /// 每次 IME 真正把文本提交进宿主都会 +1：一字一屏 = 字数次，整句一屏 = 1。
     /// </summary>
     public int SnapshotCommitEvents() => Volatile.Read(ref ResultCount);
 
+    /// <summary>取自 fromIndex 起的提交文本段（即这些快照之后发生的上屏），线程安全。</summary>
+    public IReadOnlyList<string> ReadCommitEvents(int fromIndex)
+    {
+        lock (_commitLogLock)
+            return _commitLog.Skip(Math.Max(0, fromIndex)).ToList();
+    }
+
     public void Reset()
     {
         _committed.Clear();
         _composing = false;
         StartCount = CompCount = EndCount = ResultCount = 0;
+        lock (_commitLogLock) _commitLog.Clear();
         Text = string.Empty;
     }
 
@@ -138,6 +149,7 @@ public sealed class ImeHost : RichTextBox, IUpTextSink
                 {
                     ResultCount++;
                     _committed.Append(result);
+                    lock (_commitLogLock) _commitLog.Add(result);   // 记录提交点位（文本段）
                 }
                 Log?.Invoke($"[IME] COMPOSITION flags=0x{flags:X4} comp=\"{comp}\" result=\"{result}\"");
                 break;

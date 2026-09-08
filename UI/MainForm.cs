@@ -297,6 +297,8 @@ internal sealed class MainForm : Form
         AppendMarked("   按键串  ", u.Keys);
         AppendMarked("   期望    ", markedExpected);
         AppendMarked("   实际    ", markedActual);
+        if (u.CommitSegments.Count > 0)
+            AppendMarked("   上屏    ", string.Join(" ", u.CommitSegments));
         AppendRt(Environment.NewLine + Environment.NewLine, Color.Black);
     }
 

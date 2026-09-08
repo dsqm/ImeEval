@@ -165,6 +165,9 @@ public sealed class UnitResult
     /// <summary>本句期间 IME 真正提交文本的次数（GCS_RESULTSTR 事件数；一字一屏=字数，整句一屏=1）。</summary>
     public int CommitEvents { get; set; }
 
+    /// <summary>本句期间每次提交的文本段（上屏点位），如 [将高, 置信度, 的, 自动, 上屏]。</summary>
+    public List<string> CommitSegments { get; set; } = new();
+
     public int Errors => Sub + Del + Ins;
     public bool Correct => Errors == 0;
 
