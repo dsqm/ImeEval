@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace ImeBench.Core;
 
 /// <summary>编辑距离的三类细分。</summary>
