@@ -64,6 +64,47 @@ internal static class Ui
     };
 
     /// <summary>极简输入对话框（不引 Microsoft.VisualBasic 依赖）。</summary>
+    /// <summary>多行输入框（标点按键配置等），返回 null = 取消。</summary>
+    public static string? ShowMulti(IWin32Window owner, string title, string prompt, string value)
+    {
+        using var form = new Form
+        {
+            Text = title, StartPosition = FormStartPosition.CenterParent,
+            Font = new Font("Microsoft YaHei", 9f), Size = new Size(520, 480),
+            MinimizeBox = false, ShowInTaskbar = false,
+        };
+        var lbl = new Label
+        {
+            Text = prompt, Dock = DockStyle.Top, Height = 48,
+            Padding = new Padding(8, 8, 8, 2), AutoSize = false,
+        };
+        var tb = new TextBox
+        {
+            Multiline = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Both,
+            WordWrap = false, Font = new Font("Consolas", 10f),
+            Text = value, AcceptsReturn = true, AcceptsTab = true,
+        };
+        var btns = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom, Height = 44,
+            FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 6, 8, 6),
+        };
+        var ok = new Button { Text = "确定", DialogResult = DialogResult.OK, Width = 90, Height = 28 };
+        var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel, Width = 90, Height = 28 };
+        btns.Controls.Add(ok);
+        btns.Controls.Add(cancel);
+        form.AcceptButton = ok;
+        form.CancelButton = cancel;
+
+        var inner = new Panel { Dock = DockStyle.Fill, Padding = new Padding(8) };
+        inner.Controls.Add(tb);
+        form.Controls.Add(inner);
+        form.Controls.Add(lbl);
+        form.Controls.Add(btns);
+
+        return form.ShowDialog(owner) == DialogResult.OK ? tb.Text : null;
+    }
+
     public static string? Show(IWin32Window owner, string text, string caption, string def)
     {
         using var form = new Form
@@ -107,10 +148,12 @@ internal sealed class CorpusPanel : UserControl
     private readonly Label _lblStatus = new() { AutoSize = true, Padding = new Padding(4, 8, 4, 4) };
     private readonly NumericUpDown _nudMaxChars = Ui.Num(1, 500, 20, 60);
     private readonly NumericUpDown _nudTailDelay = Ui.Num(0, 5000, 0, 110);
-    private readonly CheckBox _cbPunct = new() { Text = "标点顶屏", Checked = true, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
+    private readonly CheckBox _cbPunct = new() { Text = "根据标点断句", Checked = true, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
     private readonly TextBox _tbCommit = new() { Text = "_", Width = 50 };
 
     private CodeTable _code = new();
+    private Dictionary<char, string> _punct = new();   // 标点按键配置
+    private string _punctText = "";                    // 标点配置的原始文本（落盘用）
     private bool _loadingList;          // 填充下拉框时抑制 SelectedIndexChanged
 
     private CorpusSettings _settings;
@@ -127,7 +170,8 @@ internal sealed class CorpusPanel : UserControl
     {
         MaxCharsPerUnit = (int)_nudMaxChars.Value,
         TailDelayMs = (int)_nudTailDelay.Value,
-        PunctCommits = _cbPunct.Checked,
+        SplitByPunctuation = _cbPunct.Checked,
+        Punctuation = _punct,
         CommitKeys = _tbCommit.Text.Length == 0 ? "_" : _tbCommit.Text,
     };
 
@@ -138,6 +182,8 @@ internal sealed class CorpusPanel : UserControl
         Directory.CreateDirectory(ArticleDir);
         _settings = CorpusSettings.Load(SettingsFile);
         _settings.FilePath = SettingsFile;
+        _punctText = _settings.PunctKeys.Length == 0 ? PunctuationConfig.DefaultText : _settings.PunctKeys;
+        _punct = PunctuationConfig.Parse(_punctText);
 
         var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 码表（含生成按键表按钮，与运行页「开始」同位）
@@ -178,6 +224,7 @@ internal sealed class CorpusPanel : UserControl
             Ui.Lbl("句尾等待ms:"), _nudTailDelay,
             Ui.Lbl("上屏键:"), _tbCommit,
             _cbPunct,
+            Ui.Btn("设置标点按键…", (_, _) => EditPunctuation()),
         });
 
         // 行 3：文章来源
@@ -333,11 +380,31 @@ internal sealed class CorpusPanel : UserControl
         SaveSettings();
     }
 
+    /// <summary>编辑标点按键配置（每行：标点字符 + 空格/制表符 + 按键串）。</summary>
+    private void EditPunctuation()
+    {
+        string? text = Ui.ShowMulti(this, "设置标点按键",
+            "每行一条：标点字符 + 空格或制表符 + 按键串（# 开头为注释）\n" +
+            "例：。 .     ！ <Shift+1>     _ = 空格     {DELAY=100} = 等待",
+            _punctText);
+        if (text == null) return;
+
+        var errors = new List<string>();
+        _punct = PunctuationConfig.Parse(text, errors);
+        _punctText = text;
+        SaveSettings();
+
+        if (errors.Count > 0)
+            MessageBox.Show(this, string.Join("\n", errors), "标点配置有无效行",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+    }
+
     /// <summary>把当前方案（码表/文章选择 + 全部编译选项）写入 exe 文件夹。</summary>
     public void SaveSettings()
     {
         _settings.Code = _cbCode.SelectedItem as string ?? "";
         _settings.Article = _cbArticle.SelectedItem as string ?? "";
+        _settings.PunctKeys = _punctText;
         _settings.MaxCharsPerUnit = (int)_nudMaxChars.Value;
         _settings.TailDelayMs = (int)_nudTailDelay.Value;
         _settings.CommitKeys = _tbCommit.Text;
