@@ -46,6 +46,28 @@ public sealed class CodeTable
         return table;
     }
 
+    /// <summary>加载一个文件夹里的所有 .txt 码表并合并（文件名排序，后加载的码排在前一码之后）。</summary>
+    public static (CodeTable Table, List<string> Files) LoadFolder(string dir)
+    {
+        var table = new CodeTable();
+        var files = Directory.Exists(dir)
+            ? Directory.GetFiles(dir, "*.txt").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList()
+            : new List<string>();
+        foreach (string f in files)
+        {
+            try { table.MergeFrom(CodeTable.Load(f)); } catch { /* 单个文件坏了不影响其他 */ }
+        }
+        return (table, files);
+    }
+
+    /// <summary>合并另一张码表的内容（同一字符的多条码会累积）。</summary>
+    public void MergeFrom(CodeTable other)
+    {
+        foreach (var kv in other._map)
+            foreach (string code in kv.Value)
+                Add(kv.Key, code);
+    }
+
     public void Save(string path)
     {
         using var w = new StreamWriter(path, false, System.Text.Encoding.UTF8);

@@ -86,138 +86,193 @@ internal static class Ui
 }
 
 // ─────────────────────────────────────────────────────────────
-// 语料面板：加载码表 + 粘贴文章 + 编译成按键表 + 处理 OOV/多音字
+// 语料面板：自动读码表文件夹 + 文章文件夹下拉选择 + 编译成按键表
+// 完全便携化：所有数据都在 exe 文件夹的 data\ 下
 // ─────────────────────────────────────────────────────────────
 internal sealed class CorpusPanel : UserControl
 {
-    private readonly TextBox _tbCodePath = new() { Width = 320, ReadOnly = true };
+    // 便携化路径：全部定死在 exe 文件夹下
+    public static readonly string DataDir = Path.Combine(AppContext.BaseDirectory, "data");
+    public static readonly string CodeDir = Path.Combine(DataDir, "码表");
+    public static readonly string ArticleDir = Path.Combine(DataDir, "文章");
+    private static readonly string SettingsFile = Path.Combine(DataDir, "settings.json");
+
+    private readonly Label _lblCodeStatus = new() { AutoSize = true, Padding = new Padding(0, 8, 8, 0) };
     private readonly TextBox _tbArticle = new()
     {
         Multiline = true, ScrollBars = ScrollBars.Vertical, WordWrap = true,
         Dock = DockStyle.Fill, Font = new Font("Microsoft YaHei", 10f),
     };
     private readonly Label _lblStatus = new() { AutoSize = true, Padding = new Padding(4, 8, 4, 4) };
-    private readonly DataGridView _gridIssues = Ui.Grid();
-    private readonly NumericUpDown _nudMaxKeys = Ui.Num(4, 200, 40);
+    private readonly ComboBox _cbArticle = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 380 };
+    private readonly NumericUpDown _nudMaxChars = Ui.Num(1, 500, 20, 60);
+    private readonly NumericUpDown _nudTailDelay = Ui.Num(0, 5000, 0, 70);
     private readonly CheckBox _cbPunct = new() { Text = "标点顶屏", Checked = true, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
-    private readonly TextBox _tbCommit = new() { Text = "_", Width = 40 };
-    private readonly TextBox _tbSep = new() { Text = "", Width = 40 };
+    private readonly TextBox _tbCommit = new() { Text = "_", Width = 50 };
 
     private CodeTable _code = new();
-    private List<CompileIssue> _issues = new();
-    private string _article = "";
+    private bool _loadingArticleList;   // 填充下拉框时抑制 SelectedIndexChanged
+
+    private CorpusSettings _settings;
 
     public event Action<KeyTable>? Compiled;
 
-    public string CodeTablePath => _tbCodePath.Text;
+    /// <summary>码表来源说明（写进报告 meta）。</summary>
+    public string CodeTablePath => CodeDir;
 
     public CompileOptions CurrentOptions => new()
     {
-        MaxKeysPerUnit = (int)_nudMaxKeys.Value,
+        MaxCharsPerUnit = (int)_nudMaxChars.Value,
+        TailDelayMs = (int)_nudTailDelay.Value,
         PunctCommits = _cbPunct.Checked,
-        CommitKeys = _tbCommit.Text.Length == 0 ? " " : _tbCommit.Text,
-        SeparatorKeys = _tbSep.Text,
+        CommitKeys = _tbCommit.Text.Length == 0 ? "_" : _tbCommit.Text,
     };
 
     public CorpusPanel()
     {
         Dock = DockStyle.Fill;
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // 码表（放不下自动换行撑高）
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // 编译选项（同上）
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));   // 编译按钮 + 状态文字
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 52));
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
+        Directory.CreateDirectory(CodeDir);
+        Directory.CreateDirectory(ArticleDir);
+        _settings = CorpusSettings.Load(SettingsFile);
+        _settings.FilePath = SettingsFile;
 
-        // 行 1：码表
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 码表（自动加载）
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 编译选项
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 文章来源
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // 文章编辑
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 状态
+
+        // 行 1：码表（定死文件夹，自动加载合并，无需选择）
         var rowCode = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            WrapContents = true,       // 窗口窄时折到第二行，而不是把按钮裁掉
-            AutoSize = true,
-            MinimumSize = new Size(0, 40),
+            Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 40),
         };
         rowCode.Controls.AddRange(new Control[]
         {
-            Ui.Lbl("码表:"), _tbCodePath,
-            Ui.Btn("浏览…", (_, _) => BrowseCode()),
-            Ui.Btn("新建示例", (_, _) => NewSampleCode()),
+            Ui.Lbl("码表(自动):"), _lblCodeStatus,
+            Ui.Btn("重新加载", (_, _) => ReloadCodes()),
+            Ui.Btn("生成示例码表", (_, _) => NewSampleCode()),
         });
 
-        // 行 2：编译选项（不含编译按钮，按钮单独一行保证完整显示）
+        // 行 2：编译选项
         var rowOpt = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            WrapContents = true,
-            AutoSize = true,
-            MinimumSize = new Size(0, 40),
+            Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 40),
         };
         rowOpt.Controls.AddRange(new Control[]
         {
-            Ui.Lbl("单元键长上限:"), _nudMaxKeys,
+            Ui.Lbl("单句上限:"), _nudMaxChars, Ui.Lbl("字"),
+            Ui.Lbl("句尾等待ms:"), _nudTailDelay,
+            Ui.Lbl("上屏键:"), _tbCommit,
             _cbPunct,
-            Ui.Lbl("确认键:"), _tbCommit,
-            Ui.Lbl("音节分隔符:"), _tbSep,
         });
 
-        // 行 3：编译按钮 + 状态文字
-        var rowCompile = new FlowLayoutPanel
+        // 行 3：文章来源
+        var rowArt = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            WrapContents = true,
-            AutoSize = true,
-            MinimumSize = new Size(0, 42),
+            Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 40),
         };
-        rowCompile.Controls.Add(Ui.Btn("编译 →", (_, _) => Compile()));
-        rowCompile.Controls.Add(_lblStatus);
+        rowArt.Controls.AddRange(new Control[]
+        {
+            Ui.Lbl("文章(data\\文章):"), _cbArticle,
+            Ui.Btn("打开文章文件夹", (_, _) =>
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = ArticleDir, UseShellExecute = true }); }
+                catch (Exception ex) { MessageBox.Show(this, "打开失败：" + ex.Message, "ImeBench"); }
+            }),
+        });
+        _cbArticle.SelectedIndexChanged += (_, _) =>
+        {
+            if (_loadingArticleList) return;
+            if (_cbArticle.SelectedItem is string file)
+            {
+                LoadArticleFile(Path.Combine(ArticleDir, file));
+                SaveSettings();
+            }
+        };
 
-        // 行 3：文章
-        var gbArticle = new GroupBox { Text = "测试文章（粘贴）", Dock = DockStyle.Fill, Padding = new Padding(6) };
+        // 行 4：文章编辑（下拉选中后加载进来，仍可手动修改/粘贴）
+        var gbArticle = new GroupBox { Text = "测试文章（选中即载入，也可直接粘贴）", Dock = DockStyle.Fill, Padding = new Padding(6) };
         gbArticle.Controls.Add(_tbArticle);
 
-        // 行 4：待确认清单
-        var gbIssues = new GroupBox { Text = "待确认清单（未覆盖 / 多音字）", Dock = DockStyle.Fill, Padding = new Padding(6) };
-        _gridIssues.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "类型", DataPropertyName = "KindText", FillWeight = 15 });
-        _gridIssues.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "字符", DataPropertyName = "Ch", FillWeight = 10 });
-        _gridIssues.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "位置", DataPropertyName = "CharIndex", FillWeight = 12 });
-        _gridIssues.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "候选编码", DataPropertyName = "CandidateText", FillWeight = 63 });
-        var gbIssuesInner = new Panel { Dock = DockStyle.Fill };
-        var issueBtns = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 34, WrapContents = false };
-        issueBtns.Controls.Add(Ui.Btn("补进码表…", (_, _) => AddSelectedToCodeTable()));
-        issueBtns.Controls.Add(Ui.Btn("重新编译", (_, _) => Compile()));
-        gbIssuesInner.Controls.Add(_gridIssues);
-        gbIssuesInner.Controls.Add(issueBtns);
-        gbIssues.Controls.Add(gbIssuesInner);
+        // 行 5：编译状态
+        var rowStatus = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 40),
+        };
+        rowStatus.Controls.Add(Ui.Btn("编译 →", (_, _) => Compile()));
+        rowStatus.Controls.Add(_lblStatus);
 
         root.Controls.Add(rowCode, 0, 0);
         root.Controls.Add(rowOpt, 0, 1);
-        root.Controls.Add(rowCompile, 0, 2);
+        root.Controls.Add(rowArt, 0, 2);
         root.Controls.Add(gbArticle, 0, 3);
-        root.Controls.Add(gbIssues, 0, 4);
+        root.Controls.Add(rowStatus, 0, 4);
         Controls.Add(root);
+
+        // 应用记忆的方案，再加载码表与文章列表
+        _nudMaxChars.Value = Math.Clamp(_settings.MaxCharsPerUnit, _nudMaxChars.Minimum, _nudMaxChars.Maximum);
+        _nudTailDelay.Value = Math.Clamp(_settings.TailDelayMs, _nudTailDelay.Minimum, _nudTailDelay.Maximum);
+        _tbCommit.Text = string.IsNullOrEmpty(_settings.CommitKeys) ? "_" : _settings.CommitKeys;
+        _cbPunct.Checked = _settings.PunctCommits;
+
+        ReloadCodes();
+        RefreshArticleList(_settings.Article);
     }
 
-    private void BrowseCode()
+    /// <summary>扫描码表文件夹并合并所有 .txt。</summary>
+    public void ReloadCodes()
     {
-        using var dlg = new OpenFileDialog { Filter = "码表文件|*.txt;*.dict;*.yaml|所有文件|*.*" };
-        if (dlg.ShowDialog() == DialogResult.OK) LoadCode(dlg.FileName);
+        var (table, files) = CodeTable.LoadFolder(CodeDir);
+        _code = table;
+        _lblCodeStatus.Text = files.Count == 0
+            ? $"（{CodeDir} 里没有 .txt 码表——点「生成示例码表」试试）"
+            : $"{files.Count} 个文件，共 {_code.Count} 字，多音字 {_code.AmbiguousCount} 个（取首码）";
     }
 
     private void NewSampleCode()
     {
-        using var dlg = new SaveFileDialog { Filter = "码表文件|*.txt", FileName = "code-table.txt" };
-        if (dlg.ShowDialog() != DialogResult.OK) return;
-        File.WriteAllText(dlg.FileName, CodeTable.SampleText, new UTF8Encoding(false));
-        LoadCode(dlg.FileName);
+        string path = Path.Combine(CodeDir, "示例码表.txt");
+        File.WriteAllText(path, CodeTable.SampleText, new UTF8Encoding(false));
+        ReloadCodes();
     }
 
+    /// <summary>刷新文章下拉框；尽量恢复上次选中的方案。</summary>
+    public void RefreshArticleList(string? select = null)
+    {
+        _loadingArticleList = true;
+        try
+        {
+            _cbArticle.Items.Clear();
+            var files = Directory.Exists(ArticleDir)
+                ? Directory.GetFiles(ArticleDir, "*.txt").Select(Path.GetFileName).OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList()
+                : new List<string?>();
+            foreach (var f in files) _cbArticle.Items.Add(f);
+
+            string want = select ?? _settings.Article;
+            int idx = want.Length == 0 ? -1 : _cbArticle.Items.IndexOf(want);
+            _cbArticle.SelectedIndex = idx >= 0 ? idx : (files.Count > 0 ? 0 : -1);
+        }
+        finally { _loadingArticleList = false; }
+
+        if (_cbArticle.SelectedItem is string file)
+            LoadArticleFile(Path.Combine(ArticleDir, file));
+    }
+
+    private void LoadArticleFile(string path)
+    {
+        try { _tbArticle.Text = File.ReadAllText(path); }
+        catch (Exception ex) { MessageBox.Show(this, "文章读取失败：" + ex.Message, "ImeBench"); }
+    }
+
+    /// <summary>直接加载一个码表文件（--smoke 无人值守用）。</summary>
     public void LoadCode(string path)
     {
         try
         {
             _code = CodeTable.Load(path);
-            _tbCodePath.Text = path;
-            _lblStatus.Text = $"码表已加载：{_code.Count} 字，其中多音字 {_code.AmbiguousCount} 个";
+            _lblCodeStatus.Text = $"指定文件：{path}（{_code.Count} 字）";
         }
         catch (Exception ex)
         {
@@ -229,35 +284,33 @@ internal sealed class CorpusPanel : UserControl
 
     public void Compile()
     {
-        _article = _tbArticle.Text;
-        if (_article.Length == 0)
+        string article = _tbArticle.Text;
+        if (article.Length == 0)
         {
-            MessageBox.Show(this, "请先粘贴测试文章。", "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "请先选择或粘贴测试文章。", "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         if (_code.Count == 0)
         {
-            MessageBox.Show(this, "请先加载码表。", "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, $"码表为空——请把码表 .txt 放进 {CodeDir} 后点「重新加载」。", "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
-        var res = Compiler.Build(_article, _code, CurrentOptions);
-        _issues = res.Issues;
-        _gridIssues.DataSource = new BindingList<CompileIssue>(_issues);
+        var res = Compiler.Build(article, _code, CurrentOptions);
         _lblStatus.Text = res.ToString();
         Compiled?.Invoke(res.Table);
+        SaveSettings();
     }
 
-    private void AddSelectedToCodeTable()
+    /// <summary>把当前方案（文章选择 + 全部编译选项）写入 exe 文件夹。</summary>
+    public void SaveSettings()
     {
-        if (_gridIssues.CurrentRow?.DataBoundItem is not CompileIssue iss) return;
-        string? input = Ui.Show(this,
-            $"为「{iss.Ch}」指定输入键（留空=跳过该字符，不计入统计）", "补充码表", "");
-        if (string.IsNullOrWhiteSpace(input)) return;
-
-        _code.Add(iss.Ch, input.Trim());
-        try { _code.Save(_tbCodePath.Text); } catch { /* 只读路径就算了，内存里已生效 */ }
-        Compile();
+        _settings.Article = _cbArticle.SelectedItem as string ?? "";
+        _settings.MaxCharsPerUnit = (int)_nudMaxChars.Value;
+        _settings.TailDelayMs = (int)_nudTailDelay.Value;
+        _settings.CommitKeys = _tbCommit.Text;
+        _settings.PunctCommits = _cbPunct.Checked;
+        _settings.Save();
     }
 }
 

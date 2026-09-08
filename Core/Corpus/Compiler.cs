@@ -1,46 +1,26 @@
+using System.Globalization;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace ImeBench.Core;
 
-public enum IssueKind
-{
-    /// <summary>码表没覆盖的字符。默认跳过，且不计入 CER 分母（否则会虚高）。</summary>
-    Oov,
-
-    /// <summary>一字多码（多音字）。默认取首码，需在清单里确认。</summary>
-    Ambiguous,
-}
-
-public sealed class CompileIssue
-{
-    public IssueKind Kind { get; set; }
-    public char Ch { get; set; }
-    public int CharIndex { get; set; }
-    public List<string> Candidates { get; set; } = new();
-
-    /// <summary>用户选定的码（下标）。-1 表示"跳过该字符"。</summary>
-    public int ChosenIndex { get; set; }
-
-    public string KindText => Kind == IssueKind.Oov ? "未覆盖" : "多音字";
-    public string CandidateText => Candidates.Count == 0 ? "(无)" : string.Join(" / ", Candidates);
-}
-
 public sealed class CompileOptions
 {
-    /// <summary>单个上屏单元的按键长度上限，超过就插入确认键。</summary>
-    public int MaxKeysPerUnit { get; set; } = 40;
+    /// <summary>单句（上屏单元）的字数上限，超过就分段上屏。按「字」数，代理对（如 emoji、生僻字）算 1 字。</summary>
+    public int MaxCharsPerUnit { get; set; } = 20;
 
-    /// <summary>遇到标点时切分上屏单元（利用 IME 的标点顶屏）。</summary>
-    public bool PunctCommits { get; set; } = true;
+    /// <summary>句尾等待（毫秒）：每句结尾、上屏键之前插入 {DELAY=n}。0 = 不插入。</summary>
+    public int TailDelayMs { get; set; } = 0;
 
-    /// <summary>确认键（默认 "_" = 空格；按键串里真实空格会被忽略）。</summary>
+    /// <summary>上屏键（每句结尾追加）。默认 "_" = 空格。</summary>
     public string CommitKeys { get; set; } = "_";
+
+    /// <summary>遇到标点切分上屏单元（利用 IME 的标点顶屏）。标点结尾时同样先插句尾等待，再发标点键。</summary>
+    public bool PunctCommits { get; set; } = true;
 
     /// <summary>音节分隔符（双拼/五笔可能需要；全拼留空）。不上屏。</summary>
     public string SeparatorKeys { get; set; } = "";
-
-    /// <summary>ASCII 字符码表没覆盖时原样发键。</summary>
-    public bool AsciiPassthrough { get; set; } = true;
 
     /// <summary>换行直接切分单元，不产生按键。</summary>
     public bool SkipNewline { get; set; } = true;
@@ -52,203 +32,146 @@ public sealed class CompileOptions
 public sealed class CompileResult
 {
     public KeyTable Table { get; set; } = new();
-    public List<CompileIssue> Issues { get; set; } = new();
+
+    /// <summary>文章的文本元素总数（代理对算 1 字）。</summary>
     public int SourceChars { get; set; }
+
+    /// <summary>码表覆盖、参与测试的字数。</summary>
     public int CoveredChars { get; set; }
 
-    public int OovCount => Issues.Count(i => i.Kind == IssueKind.Oov);
-    public int AmbiguousCount => Issues.Count(i => i.Kind == IssueKind.Ambiguous);
+    /// <summary>码表没有、被直接忽略排除的字数（不计入 CER 分母）。</summary>
+    public int OovSkipped { get; set; }
+
+    /// <summary>一字多码的字数（取首码）。</summary>
+    public int Ambiguous { get; set; }
 
     public override string ToString()
         => $"单元 {Table.UnitCount} 个 / 按键 {Table.TotalKeys} 个 / 覆盖 {CoveredChars}/{SourceChars} 字" +
-           $" / 未覆盖 {OovCount} / 多音字 {AmbiguousCount}";
+           $" / OOV 跳过 {OovSkipped} / 多音字取首码 {Ambiguous}";
 }
 
 /// <summary>
 /// 把「文章 + 码表」编译成可执行的按键表。
 ///
-/// 歧义（OOV、多音字）在这一步就暴露成清单交给用户确认，
-/// 而不是留到运行时 —— 运行时零歧义，按键表本身就是可复现的测试脚本。
+/// 规则（2026-09-08 语料页重构版）：
+///   1. 码表没有的字符（OOV）直接忽略排除，不出清单、不计入期望文本（= 不计入 CER 分母）；
+///   2. 一字多码取首码，不再打断流程确认；
+///   3. 上屏单元按「字数」切分（代理对算 1 字），默认 20 字；
+///   4. 句尾等待 &gt; 0 时，每个单元的收尾键（上屏键或标点键）之前插入 {DELAY=n}；
+///   5. 标点顶屏：标点收尾不加空格确认键（标点自己顶屏），但同样享受句尾等待。
 /// </summary>
 public static class Compiler
 {
     public static CompileResult Build(string article, CodeTable table, CompileOptions opt)
     {
-        var res = new CompileResult { SourceChars = article.Length };
+        var res = new CompileResult { SourceChars = new StringInfo(article).LengthInTextElements };
         var kt = new KeyTable();
         var expected = new StringBuilder();
 
-        KeyUnit unit = new() { ExpectedStart = 0 };
-        int unitKeys = 0;
+        var unit = new KeyUnit { ExpectedStart = 0 };
+        int unitChars = 0;
 
         void CloseUnit(bool withCommit)
         {
-            if (unit.Tokens.Count == 0) return;
+            if (unit.Tokens.Count == 0) { unitChars = 0; return; }
 
-            if (withCommit && !unit.Tokens[^1].IsCommit)
-                unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Commit, Keys = opt.CommitKeys });
+            if (withCommit)
+            {
+                if (opt.TailDelayMs > 0 && !IsDelay(unit.Tokens[^1]))
+                    unit.Tokens.Add(DelayToken(opt.TailDelayMs));
+                if (!unit.Tokens[^1].IsCommit)
+                    unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Commit, Keys = opt.CommitKeys });
+            }
 
             unit.ExpectedLength = expected.Length - unit.ExpectedStart;
-            if (unit.ExpectedLength > 0)
-                kt.Units.Add(unit);
+            if (unit.ExpectedLength > 0) kt.Units.Add(unit);
 
             unit = new KeyUnit { ExpectedStart = expected.Length };
-            unitKeys = 0;
+            unitChars = 0;
         }
 
-        for (int i = 0; i < article.Length; i++)
+        var si = new StringInfo(article);
+        for (int e = 0; e < si.LengthInTextElements; e++)
         {
-            char c = article[i];
+            string elem = si.SubstringByTextElements(e, 1);
+            char c = elem[0];
 
             if (opt.SkipNewline && (c == '\r' || c == '\n'))
             {
-                CloseUnit(withCommit: false);
+                CloseUnit(false);
                 continue;
             }
 
-            bool has = table.TryGet(c, out List<string> codes);
-            string keys;
-
-            if (has)
+            if (!table.TryGet(c, out var codes))
             {
-                if (codes.Count > 1)
-                {
-                    res.Issues.Add(new CompileIssue
-                    {
-                        Kind = IssueKind.Ambiguous,
-                        Ch = c,
-                        CharIndex = i,
-                        Candidates = codes,
-                        ChosenIndex = 0,
-                    });
-                }
-                keys = codes[0];
+                res.OovSkipped++;   // 直接忽略排除，不计入期望文本（= 不计入 CER 分母）
+                continue;
             }
-            else if (opt.AsciiPassthrough && c < 128)
-            {
-                keys = c.ToString();
-            }
-            else
-            {
-                res.Issues.Add(new CompileIssue
-                {
-                    Kind = IssueKind.Oov,
-                    Ch = c,
-                    CharIndex = i,
-                    ChosenIndex = -1,
-                });
-                continue; // 跳过，且不计入期望文本（= 不计入 CER 分母）
-            }
-
-            // 需要分隔符时（双拼/五笔），在相邻编码之间插入
-            if (opt.SeparatorKeys.Length > 0
-                && unit.Tokens.Count > 0
-                && unit.Tokens[^1].Kind == KeyTokenKind.Key)
-            {
-                unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Sep, Keys = opt.SeparatorKeys });
-            }
-
-            unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Key, Keys = keys, Target = c });
-            unitKeys += KeySeq.CountKeys(keys);
-            expected.Append(c);
-            res.CoveredChars++;
+            if (codes.Count > 1) res.Ambiguous++;
+            string keys = codes[0];
 
             bool isPunct = opt.PunctCommits && opt.Punctuation.Contains(c);
-            if (isPunct)
-                CloseUnit(withCommit: false);   // 标点自己会顶屏，不再补空格，避免多打一个空格
-            else if (unitKeys >= opt.MaxKeysPerUnit)
-                CloseUnit(withCommit: true);
-        }
 
-        CloseUnit(withCommit: true);
-        kt.ExpectedText = expected.ToString();
-        res.Table = kt;
-        return res;
-    }
-
-    /// <summary>
-    /// 用户确认清单后重新编译：按 ChosenIndex 覆盖默认取码。
-    /// ChosenIndex = -1 表示该字符跳过。
-    /// </summary>
-    public static CompileResult Rebuild(string article, CodeTable table, CompileOptions opt,
-                                        IEnumerable<CompileIssue> resolved)
-    {
-        var chosen = new Dictionary<int, string?>();
-        foreach (var iss in resolved)
-        {
-            if (iss.Kind == IssueKind.Oov)
-            {
-                if (iss.ChosenIndex >= 0 && iss.ChosenIndex < iss.Candidates.Count)
-                    chosen[iss.CharIndex] = iss.Candidates[iss.ChosenIndex];
-                else
-                    chosen[iss.CharIndex] = null;
-            }
-            else if (iss.ChosenIndex >= 0 && iss.ChosenIndex < iss.Candidates.Count)
-            {
-                chosen[iss.CharIndex] = iss.Candidates[iss.ChosenIndex];
-            }
-        }
-
-        var res = new CompileResult { SourceChars = article.Length };
-        var kt = new KeyTable();
-        var expected = new StringBuilder();
-
-        KeyUnit unit = new() { ExpectedStart = 0 };
-        int unitKeys = 0;
-
-        void CloseUnit(bool withCommit)
-        {
-            if (unit.Tokens.Count == 0) return;
-            if (withCommit && !unit.Tokens[^1].IsCommit)
-                unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Commit, Keys = opt.CommitKeys });
-            unit.ExpectedLength = expected.Length - unit.ExpectedStart;
-            if (unit.ExpectedLength > 0) kt.Units.Add(unit);
-            unit = new KeyUnit { ExpectedStart = expected.Length };
-            unitKeys = 0;
-        }
-
-        for (int i = 0; i < article.Length; i++)
-        {
-            char c = article[i];
-
-            if (opt.SkipNewline && (c == '\r' || c == '\n')) { CloseUnit(false); continue; }
-
-            string keys;
-            if (chosen.TryGetValue(i, out var forced))
-            {
-                if (forced == null) { res.Issues.Add(new CompileIssue { Kind = IssueKind.Oov, Ch = c, CharIndex = i, ChosenIndex = -1 }); continue; }
-                keys = forced;
-            }
-            else if (table.TryGet(c, out List<string> codes))
-            {
-                keys = codes[0];
-            }
-            else if (opt.AsciiPassthrough && c < 128)
-            {
-                keys = c.ToString();
-            }
-            else
-            {
-                res.Issues.Add(new CompileIssue { Kind = IssueKind.Oov, Ch = c, CharIndex = i, ChosenIndex = -1 });
-                continue;
-            }
+            // 标点收尾：句尾等待插在标点键之前（例：zhongguo{DELAY=100},）
+            if (isPunct && opt.TailDelayMs > 0 && unit.Tokens.Count > 0)
+                unit.Tokens.Add(DelayToken(opt.TailDelayMs));
 
             if (opt.SeparatorKeys.Length > 0 && unit.Tokens.Count > 0 && unit.Tokens[^1].Kind == KeyTokenKind.Key)
                 unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Sep, Keys = opt.SeparatorKeys });
 
             unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Key, Keys = keys, Target = c });
-            unitKeys += KeySeq.CountKeys(keys);
-            expected.Append(c);
+            expected.Append(elem);          // 整个文本元素一起入期望文本，代理对不会被拆开
             res.CoveredChars++;
+            unitChars++;
 
-            bool isPunct = opt.PunctCommits && opt.Punctuation.Contains(c);
-            if (isPunct) CloseUnit(false);
-            else if (unitKeys >= opt.MaxKeysPerUnit) CloseUnit(true);
+            if (isPunct)
+                CloseUnit(false);
+            else if (unitChars >= Math.Max(1, opt.MaxCharsPerUnit))
+                CloseUnit(true);            // CloseUnit 里会先插句尾等待，再插上屏键
         }
 
         CloseUnit(true);
         kt.ExpectedText = expected.ToString();
         res.Table = kt;
         return res;
+    }
+
+    private static bool IsDelay(KeyToken t)
+        => t.Kind == KeyTokenKind.Key && t.Keys.Contains("{DELAY=", StringComparison.OrdinalIgnoreCase);
+
+    private static KeyToken DelayToken(int ms)
+        => new() { Kind = KeyTokenKind.Key, Keys = $"{{DELAY={ms}}}" };
+}
+
+/// <summary>便携化运行时设置（存 exe 文件夹 data\settings.json，不碰注册表和用户目录）。</summary>
+public sealed class CorpusSettings
+{
+    public string Article { get; set; } = "";
+    public int MaxCharsPerUnit { get; set; } = 20;
+    public int TailDelayMs { get; set; } = 0;
+    public string CommitKeys { get; set; } = "_";
+    public bool PunctCommits { get; set; } = true;
+
+    [JsonIgnore] public string FilePath { get; set; } = "";
+
+    public static CorpusSettings Load(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+                return JsonSerializer.Deserialize<CorpusSettings>(File.ReadAllText(path)) ?? new CorpusSettings();
+        }
+        catch { }
+        return new CorpusSettings();
+    }
+
+    public void Save()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(FilePath))!);
+            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch { /* exe 目录只读等场景：静默失败，不影响使用 */ }
     }
 }

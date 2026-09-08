@@ -11,8 +11,8 @@ internal sealed class MainForm : Form
     private const uint HOTKEY_MOD = MOD_CONTROL | MOD_ALT | MOD_NOREPEAT;
     private const ushort HOTKEY_VK = 0x53;                      // S
 
-    private static readonly string AppDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ImeBench");
+    // 便携化：所有运行时数据都放 exe 文件夹的 data\ 下（不碰注册表 / 用户目录）
+    private static readonly string AppDir = CorpusPanel.DataDir;
     private static string CheckpointFile => Path.Combine(AppDir, "checkpoint.json");
     private static string LastRunFile => Path.Combine(AppDir, "last-run.json");
 
@@ -519,6 +519,7 @@ internal sealed class MainForm : Form
     {
         if (_hotkeyOk) UnregisterHotKey(Handle, HOTKEY_ID);
         _timer.Stop();
+        _corpus.SaveSettings();   // 便携化：方案随程序走
         base.OnFormClosing(e);
     }
 
