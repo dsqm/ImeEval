@@ -47,8 +47,14 @@ internal sealed class MainForm : Form
     private readonly BindingList<UnitResult> _rows = new();
     private readonly NumericUpDown _nudInterval = Ui.Num(0, 500, 2);
     private readonly NumericUpDown _nudSettle = Ui.Num(0, 3000, 40);
-    private readonly CheckBox _cbOnlyError = new() { Text = "只看错误", Checked = true, AutoSize = true, Padding = new Padding(6, 6, 0, 0) };
-    private readonly Label _lblStats = new() { Dock = DockStyle.Fill, Padding = new Padding(8), Font = new Font("Microsoft YaHei", 10f) };
+    private readonly CheckBox _cbOnlyError = new() { Text = "只看错误", Checked = true, AutoSize = true, Margin = new Padding(10, 10, 6, 0) };
+    private readonly Label _lblStats = new()
+    {
+        Dock = DockStyle.Top, AutoSize = true,
+        Padding = new Padding(10, 4, 10, 6),
+        Font = new Font("Microsoft YaHei", 10.5f),
+        Text = "（尚未开始——点「▶ 开始」后这里实时刷新）",
+    };
     private readonly TextBox _tbLog = new()
     {
         Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true,
@@ -123,20 +129,19 @@ internal sealed class MainForm : Form
 
     private Control BuildRunPage()
     {
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));       // 工具栏（放不下自动换行撑高）
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));    // 宿主
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));    // 统计
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));    // 结果
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 130));   // 日志
+        // 用停靠布局替代 TLP 绝对行高：
+        //   统计区自适应内容高度（不再被 64px 行高压扁），
+        //   复选框行独立成条（不再贴着分组框边框被裁），
+        //   工具栏窄窗口自动换行。
+        var container = new Panel { Dock = DockStyle.Fill };
 
-        // 工具栏：允许换行，窗口窄时自动折到第二行而不是把按钮裁掉
+        // 工具栏（最顶部）
         var bar = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
             WrapContents = true,
             AutoSize = true,
-            MinimumSize = new Size(0, 44),
+            MinimumSize = new Size(0, 46),
         };
         _btnStart.Click += (_, _) => _ = StartAsync(0, null);
         _btnStop.Click += (_, _) => StopRun("用户点击停止");
@@ -151,34 +156,35 @@ internal sealed class MainForm : Form
             Ui.Btn("导出 HTML", (_, _) => Export("html")),
         });
 
-        // 宿主
-        var gbHost = new GroupBox { Text = "输入宿主（按键发到这里，测试期间请勿切换窗口）", Dock = DockStyle.Fill, Padding = new Padding(6) };
+        // 输入宿主
+        var gbHost = new GroupBox { Text = "输入宿主（按键发到这里，测试期间请勿切换窗口）", Dock = DockStyle.Top, Height = 96, Padding = new Padding(6) };
         gbHost.Controls.Add(_host);
 
-        // 统计
-        var gbStats = new GroupBox { Text = "实时统计", Dock = DockStyle.Fill };
+        // 实时统计：AutoSze 分组框 + 顶部停靠自动换行标签，内容多高框就多高
+        var gbStats = new GroupBox { Text = "实时统计", Dock = DockStyle.Top, AutoSize = true, Padding = new Padding(4, 0, 4, 2) };
         gbStats.Controls.Add(_lblStats);
 
-        // 结果
-        var gbResult = new GroupBox { Text = "逐句对照", Dock = DockStyle.Fill, Padding = new Padding(6) };
+        // 逐句对照（占据剩余全部空间）
+        var gbResult = new GroupBox { Text = "逐句对照", Dock = DockStyle.Fill, Padding = new Padding(6, 2, 6, 6) };
         var resultInner = new Panel { Dock = DockStyle.Fill };
-        var resultBtns = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 30, WrapContents = false };
+        var resultBtns = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 38, WrapContents = false };
         resultBtns.Controls.Add(_cbOnlyError);
         _cbOnlyError.CheckedChanged += (_, _) => RebuildRows();
         resultInner.Controls.Add(_gridResult);
         resultInner.Controls.Add(resultBtns);
         gbResult.Controls.Add(resultInner);
 
-        // 日志
-        var gbLog = new GroupBox { Text = "日志", Dock = DockStyle.Fill, Padding = new Padding(6) };
+        // 日志（底部）
+        var gbLog = new GroupBox { Text = "日志", Dock = DockStyle.Bottom, Height = 140, Padding = new Padding(6) };
         gbLog.Controls.Add(_tbLog);
 
-        root.Controls.Add(bar, 0, 0);
-        root.Controls.Add(gbHost, 0, 1);
-        root.Controls.Add(gbStats, 0, 2);
-        root.Controls.Add(gbResult, 0, 3);
-        root.Controls.Add(gbLog, 0, 4);
-        return root;
+        // 停靠按「后加先停」处理：bar 最后加 → 最顶；gbResult 最先加 → 占余下空间
+        container.Controls.Add(gbResult);
+        container.Controls.Add(gbLog);
+        container.Controls.Add(gbStats);
+        container.Controls.Add(gbHost);
+        container.Controls.Add(bar);
+        return container;
     }
 
     private void BuildResultGrid()
@@ -250,6 +256,7 @@ internal sealed class MainForm : Form
         foreach (var e in _runner.SendErrors.Distinct())
             Log("按键串警告：" + e);
         Log(res.Stats.Summary());
+        _lblStats.Text = FormatSummary(res.Stats.Summary());
         try { Exporter.ToJson(LastRunFile, res, BuildMeta()); } catch { }
     }
 
@@ -276,8 +283,12 @@ internal sealed class MainForm : Form
 
         if (!u.Correct || !_cbOnlyError.Checked) _rows.Add(u);
         if (_lblStats.Parent != null && _runner != null)
-            _lblStats.Text = _runner.Live.Summary();
+            _lblStats.Text = FormatSummary(_runner.Live.Summary());
     }
+
+    /// <summary>把一行式统计摘要折成 3 行，实时统计区更好读。</summary>
+    private static string FormatSummary(string s)
+        => s.Replace("自然句", "\n自然句").Replace("耗时", "\n耗时");
 
     private void RebuildRows()
     {
