@@ -142,6 +142,9 @@ public sealed class Runner
     /// <summary>本轮发送层的按键串解析错误（无法识别的特殊键/指令等）。</summary>
     public IReadOnlyList<string> SendErrors => _player.Errors;
 
+    /// <summary>本轮检测到高置信度自动上屏而跳过上屏键的句数。</summary>
+    public int AutoCommitSkips => _player.AutoCommitSkips;
+
     private void RunLoop(KeyTable table, RunOptions opt, int startIndex, RunResult result)
     {
         var pacer = new Pacer { IntervalMs = opt.IntervalMs };
@@ -167,7 +170,15 @@ public sealed class Runner
             pacer.Reset();
             sw.Restart();
 
-            var status = _player.Play(unit, _ctrl, pacer);
+            string expected = table.ExpectedOf(unit);
+
+            // 高置信度自动上屏探测：上屏键发出前，若输入法已把整句上屏，则跳过空格
+            bool autoCommit = false;
+            var status = _player.Play(unit, _ctrl, pacer, commitNeeded: () =>
+            {
+                autoCommit = _verify.IsAutoCommitted(expected, Math.Min(opt.SettleMs, 60), () => _ctrl.StopRequested);
+                return !autoCommit;
+            });
             if (status != SendStatus.Sent)
             {
                 reason = status switch
@@ -185,8 +196,8 @@ public sealed class Runner
 
             if (_ctrl.StopRequested) { reason = Map(_ctrl.Source); break; }
 
-            string expected = table.ExpectedOf(unit);
             var ur = _verify.Compare(i, unit.DisplayText, expected, actual, sw.ElapsedMilliseconds);
+            ur.AutoCommit = autoCommit;
 
             result.Units.Add(ur);
             result.Stats.ElapsedMs += ur.Ms;

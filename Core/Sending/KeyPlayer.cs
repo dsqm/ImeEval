@@ -24,8 +24,15 @@ public sealed class KeyPlayer
 
     public KeyPlayer(InputSender sender) => _sender = sender;
 
-    /// <summary>清空错误累积（每轮测试开始前调用一次）。</summary>
-    public void ResetErrors() => Errors.Clear();
+    /// <summary>检测到高置信度自动上屏、跳过上屏键的次数（每轮开始前 ResetErrors 清零）。</summary>
+    public int AutoCommitSkips { get; private set; }
+
+    /// <summary>清空错误与计数（每轮测试开始前调用一次）。</summary>
+    public void ResetErrors()
+    {
+        Errors.Clear();
+        AutoCommitSkips = 0;
+    }
 
     /// <summary>收到最近一次 SendInput 失败的原因（=0 表示没失败过）。</summary>
     public int LastError => _sender.LastError;
@@ -33,11 +40,20 @@ public sealed class KeyPlayer
     /// <summary>累计失败次数。</summary>
     public int FailCount => _sender.FailCount;
 
-    /// <summary>播放一个上屏单元。返回 Sent 表示全部发完。</summary>
-    public SendStatus Play(KeyUnit unit, RunController ctrl, Pacer pacer)
+    /// <summary>
+    /// 播放一个上屏单元。返回 Sent 表示全部发完。
+    ///
+    /// commitNeeded：发上屏键前回调一次——返回 false 表示输入法已经自动上屏
+    /// （高置信度整句无需空格），此时跳过上屏键，避免多打一个空格污染比对。
+    /// </summary>
+    public SendStatus Play(KeyUnit unit, RunController ctrl, Pacer pacer, Func<bool>? commitNeeded = null)
     {
+        KeyToken? commit = null;
+
         foreach (var token in unit.Tokens)
         {
+            if (token.IsCommit) { commit = token; continue; }   // 上屏键延后到编码/延迟之后统一处理
+
             var items = KeySeq.Parse(token.Keys, Errors);
             foreach (var it in items)
             {
@@ -57,6 +73,30 @@ public sealed class KeyPlayer
                 pacer.Wait();
             }
         }
+
+        if (commit != null)
+        {
+            if (commitNeeded != null && !commitNeeded())
+            {
+                AutoCommitSkips++;   // 已自动上屏，跳过空格
+                return SendStatus.Sent;
+            }
+
+            foreach (var it in KeySeq.Parse(commit.Keys, Errors))
+            {
+                if (it.Kind == KeySeqItem.ItemKind.Delay) { WaitDelay(it.DelayMs, ctrl); continue; }
+
+                if (!ctrl.AllowSend()) return ctrl.Status;
+
+                var st = it.Kind == KeySeqItem.ItemKind.Vk
+                    ? _sender.SendVk(it.Vk)
+                    : _sender.SendChar(it.Char);
+                if (st != SendStatus.Sent) return st;
+
+                pacer.Wait();
+            }
+        }
+
         return SendStatus.Sent;
     }
 

@@ -379,7 +379,14 @@ internal sealed class KeyTablePanel : UserControl
     public void Bind(KeyTable table)
     {
         _canvas.Load(table);
-        _lblInfo.Text = $"共 {table.UnitCount} 句 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字 —— 上为编码，下为字词，只读预览";
+        _lblInfo.Text = $"共 {table.UnitCount} 句 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字 —— 上为编码，下为字词，只读预览；绿色⏎ = 该句已自动上屏（未发空格）";
+    }
+
+    /// <summary>运行中标记某句发生了自动上屏（句尾显示绿色 ⏎）。</summary>
+    public void MarkAutoCommit(int index)
+    {
+        if (InvokeRequired) { BeginInvoke(new Action<int>(MarkAutoCommit), index); return; }
+        _canvas.MarkAutoCommit(index);
     }
 
     /// <summary>注音式预览画布：每句一行（上方编码、下方字词），支持滚动，万句级流畅。</summary>
@@ -391,6 +398,7 @@ internal sealed class KeyTablePanel : UserControl
             public List<(string Code, string Text)> Cols = new();   // 每字一列：编码在上，字词在下
             public float Y;                                // 行顶逻辑 Y
             public float Width;                            // 行宽
+            public bool AutoCommit;                        // 运行中检测到自动上屏
         }
 
         private readonly List<Row> _rows = new();
@@ -481,6 +489,15 @@ internal sealed class KeyTablePanel : UserControl
             return list;
         }
 
+        /// <summary>运行中标记某句发生了自动上屏（句尾画绿色 ⏎）。</summary>
+        public void MarkAutoCommit(int unitIndex)
+        {
+            var row = _rows.FirstOrDefault(r => r.Index == unitIndex + 1);
+            if (row == null || row.AutoCommit) return;
+            row.AutoCommit = true;
+            Invalidate();
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
@@ -522,6 +539,13 @@ internal sealed class KeyTablePanel : UserControl
                     g.DrawString(code, _fontCode, code.Length == 0 ? SystemBrushes.ControlLight : SystemBrushes.ControlText, rectCode, fmt);
                     g.DrawString(text, _fontText, SystemBrushes.ControlText, rectText, fmt);
                     x += w;
+                }
+
+                // 自动上屏标记：句尾绿色 ⏎（该句未发空格，由输入法置信度直接上屏）
+                if (row.AutoCommit)
+                {
+                    using var fMark = new Font("Consolas", 10f, FontStyle.Bold);
+                    g.DrawString("⏎", fMark, Brushes.Green, x + 2, row.Y + 1);
                 }
             }
         }

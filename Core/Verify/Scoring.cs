@@ -87,6 +87,9 @@ public sealed class UnitResult
     public int Ins { get; set; }
     public long Ms { get; set; }
 
+    /// <summary>true = 输入法高置信度自动上屏，本次跳过了上屏键。</summary>
+    public bool AutoCommit { get; set; }
+
     public int Errors => Sub + Del + Ins;
     public bool Correct => Errors == 0;
 

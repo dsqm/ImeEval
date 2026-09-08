@@ -51,8 +51,8 @@ internal sealed class MainForm : Form
     private readonly Label _lblStats = new()
     {
         Dock = DockStyle.Top, AutoSize = true,
-        Padding = new Padding(10, 4, 10, 6),
-        Font = new Font("Microsoft YaHei", 10.5f),
+        Padding = new Padding(10, 3, 10, 5),
+        Font = new Font("Microsoft YaHei", 9.5f),
         Text = "（尚未开始——点「▶ 开始」后这里实时刷新）",
     };
     private readonly TextBox _tbLog = new()
@@ -255,6 +255,8 @@ internal sealed class MainForm : Form
         Log("结束：" + res.ReasonText);
         foreach (var e in _runner.SendErrors.Distinct())
             Log("按键串警告：" + e);
+        if (_runner.AutoCommitSkips > 0)
+            Log($"其中 {_runner.AutoCommitSkips} 句检测到高置信度自动上屏，已跳过上屏键（按键表页句尾标绿⏎）。");
         Log(res.Stats.Summary());
         _lblStats.Text = FormatSummary(res.Stats.Summary());
         try { Exporter.ToJson(LastRunFile, res, BuildMeta()); } catch { }
@@ -282,13 +284,14 @@ internal sealed class MainForm : Form
         if (InvokeRequired) { BeginInvoke(new Action<UnitResult>(OnUnitDone), u); return; }
 
         if (!u.Correct || !_cbOnlyError.Checked) _rows.Add(u);
+        if (u.AutoCommit) _keyPanel.MarkAutoCommit(u.Index);
         if (_lblStats.Parent != null && _runner != null)
             _lblStats.Text = FormatSummary(_runner.Live.Summary());
     }
 
-    /// <summary>把一行式统计摘要折成 3 行，实时统计区更好读。</summary>
+    /// <summary>把一行式统计摘要按分号折成 5 行，实时统计区更好读。</summary>
     private static string FormatSummary(string s)
-        => s.Replace("自然句", "\n自然句").Replace("耗时", "\n耗时");
+        => s.Replace("；", "；\n");
 
     private void RebuildRows()
     {

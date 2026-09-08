@@ -36,12 +36,12 @@ public sealed class KeyToken
     /// <summary>是否触发一次上屏检查（读文本 + 比对）。</summary>
     [JsonIgnore] public bool IsCheckpoint => Kind == KeyTokenKind.Commit;
 
-    /// <summary>UI 显示用：空格写成 ␣，确认键写成 ⏎，避免肉眼分不清。</summary>
+    /// <summary>UI 显示用：空格一律显示 _；确认上屏也是空格，同样显示 _。</summary>
     public string Display => Kind switch
     {
-        KeyTokenKind.Commit => "⏎",
-        KeyTokenKind.Sep => "␣",
-        _ => Keys.Replace(' ', '␣'),
+        KeyTokenKind.Commit => "_",
+        KeyTokenKind.Sep => "_",
+        _ => Keys.Replace(' ', '_'),
     };
 
     public KeyToken Clone() => new() { Kind = Kind, Keys = Keys, Target = Target };

@@ -41,6 +41,15 @@ public sealed class Verifier
     public string Capture(int settleMs, int maxMs, Func<bool>? stop)
         => _sink.WaitStable(settleMs, maxMs, stop);
 
+    /// <summary>
+    /// 探测输入法是否已把整句自动上屏（高置信度无需空格）。
+    /// 必须与期望全文相等才算——有些输入法会分段提前上屏，文本非空不代表整句已完成。
+    /// 探测本身也是一次短静默等待：自动上屏发生时立即返回 true；
+    /// 未发生时约消耗 settleMs 毫秒后返回 false。
+    /// </summary>
+    public bool IsAutoCommitted(string expected, int settleMs, Func<bool>? stop)
+        => expected.Length > 0 && Capture(settleMs, Math.Max(settleMs * 4, 200), stop) == expected;
+
     /// <summary>比对并产出一条逐单元结果。</summary>
     public UnitResult Compare(int index, string keys, string expected, string actual, long elapsedMs)
     {

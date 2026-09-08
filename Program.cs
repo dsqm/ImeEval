@@ -1,3 +1,4 @@
+using ImeBench.Core;
 using ImeBench.Poc;
 using ImeBench.UI;
 
@@ -9,6 +10,21 @@ internal static class Program
     private static void Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+
+        // --compile <码表> <文章> [句尾延迟ms]：只做切分与按键表生成，打印结果后退出。
+        // 不创建窗口、不碰焦点，专门用来在后台调试语料切分问题。
+        int ci = Array.FindIndex(args, a => a.Equals("--compile", StringComparison.OrdinalIgnoreCase));
+        if (ci >= 0 && args.Length >= ci + 3)
+        {
+            var code = CodeTable.Load(args[ci + 1]);
+            var article = File.ReadAllText(args[ci + 2]);
+            int tail = args.Length >= ci + 4 && int.TryParse(args[ci + 3], out int t) ? t : 100;
+            var res = Compiler.Build(article, code, new CompileOptions { TailDelayMs = tail });
+            Console.WriteLine(res);
+            foreach (var u in res.Table.Units)
+                Console.WriteLine($"{res.Table.ExpectedOf(u)}\t{string.Concat(u.Tokens.Select(x => x.Display))}");
+            return;
+        }
 
         // --poc 打开 M0 技术验证窗口（保留，排查输入法行为差异时用）
         // 例：ImeBench.exe --poc --auto
