@@ -16,8 +16,11 @@ public sealed class CompileOptions
     /// <summary>上屏键（每句结尾追加）。默认 "_" = 空格。</summary>
     public string CommitKeys { get; set; } = "_";
 
-    /// <summary>遇到标点切分上屏单元（利用 IME 的标点顶屏）。标点结尾时同样先插句尾等待，再发标点键。</summary>
-    public bool PunctCommits { get; set; } = true;
+    /// <summary>根据标点断句：遇到标点结束这一句（连续的标点算同一句，如 ！？）。</summary>
+    public bool SplitByPunctuation { get; set; } = true;
+
+    /// <summary>标点字符 → 按键串（如 ！ → &lt;Shift+1&gt;）。由标点配置生成，与码表分开维护。</summary>
+    public Dictionary<char, string> Punctuation { get; set; } = PunctuationConfig.Parse(PunctuationConfig.DefaultText);
 
     /// <summary>音节分隔符（双拼/五笔可能需要；全拼留空）。不上屏。</summary>
     public string SeparatorKeys { get; set; } = "";
@@ -25,8 +28,6 @@ public sealed class CompileOptions
     /// <summary>换行直接切分单元，收尾与普通句子相同（句尾延迟 + 上屏键）。</summary>
     public bool SkipNewline { get; set; } = true;
 
-    /// <summary>视为标点的字符集合。</summary>
-    public string Punctuation { get; set; } = "，。！？；：、,.!?;:？！";
 }
 
 public sealed class CompileResult
@@ -70,6 +71,7 @@ public static class Compiler
 
         var unit = new KeyUnit { ExpectedStart = 0 };
         int unitChars = 0;
+        bool pendingPunctClose = false;   // 刚发完标点：等连续标点发完再收尾这一句
 
         void CloseUnit(bool withCommit)
         {
@@ -98,22 +100,39 @@ public static class Compiler
 
             if (opt.SkipNewline && (c == '\r' || c == '\n'))
             {
-                CloseUnit(true);   // 换行收尾的句子同样要上屏：补句尾延迟 + 上屏键（否则残留到下一句）
+                // 标点已收尾（标点自己顶屏）就不再补上屏键；否则补句尾延迟 + 上屏键
+                CloseUnit(!pendingPunctClose);
+                pendingPunctClose = false;
                 continue;
             }
 
-            if (!table.TryGet(c, out var codes))
+            bool isPunct = opt.SplitByPunctuation && opt.Punctuation.ContainsKey(c);
+
+            // 进入非标点字符：上一句（标点结尾）到此收尾——标点自己顶屏，不再补上屏键
+            if (!isPunct && pendingPunctClose)
+            {
+                CloseUnit(false);
+                pendingPunctClose = false;
+            }
+
+            string keys;
+            if (isPunct)
+            {
+                keys = opt.Punctuation[c];
+            }
+            else if (table.TryGet(c, out var codes))
+            {
+                if (codes.Count > 1) res.Ambiguous++;
+                keys = codes[0];
+            }
+            else
             {
                 res.OovSkipped++;   // 直接忽略排除，不计入期望文本（= 不计入 CER 分母）
                 continue;
             }
-            if (codes.Count > 1) res.Ambiguous++;
-            string keys = codes[0];
 
-            bool isPunct = opt.PunctCommits && opt.Punctuation.Contains(c);
-
-            // 标点收尾：句尾等待插在标点键之前（例：zhongguo{DELAY=100},）
-            if (isPunct && opt.TailDelayMs > 0 && unit.Tokens.Count > 0)
+            // 句尾等待：只在连续标点的第一个标点之前插一次（例：...{DELAY=100}<Shift+1>）
+            if (isPunct && opt.TailDelayMs > 0 && unit.Tokens.Count > 0 && !pendingPunctClose)
                 unit.Tokens.Add(DelayToken(opt.TailDelayMs));
 
             if (opt.SeparatorKeys.Length > 0 && unit.Tokens.Count > 0 && unit.Tokens[^1].Kind == KeyTokenKind.Key)
@@ -125,12 +144,12 @@ public static class Compiler
             unitChars++;
 
             if (isPunct)
-                CloseUnit(false);
+                pendingPunctClose = true;   // 连续标点放同一句，等后续字符到来再收尾
             else if (unitChars >= Math.Max(1, opt.MaxCharsPerUnit))
                 CloseUnit(true);            // CloseUnit 里会先插句尾等待，再插上屏键
         }
 
-        CloseUnit(true);
+        if (pendingPunctClose) CloseUnit(false); else CloseUnit(true);
         kt.ExpectedText = expected.ToString();
         res.Table = kt;
         return res;
@@ -151,7 +170,10 @@ public sealed class CorpusSettings
     public int MaxCharsPerUnit { get; set; } = 20;
     public int TailDelayMs { get; set; } = 0;
     public string CommitKeys { get; set; } = "_";
-    public bool PunctCommits { get; set; } = true;
+    public bool PunctCommits { get; set; } = true;   // 兼容旧设置（= SplitByPunctuation）
+
+    /// <summary>标点配置的原始文本，落盘用。</summary>
+    public string PunctKeys { get; set; } = "";
 
     // 窗口大小记忆（0 = 未记录过，用默认尺寸）
     public int WindowWidth { get; set; } = 0;

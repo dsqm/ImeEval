@@ -33,8 +33,8 @@ public sealed class CodeTable
             string line = raw.TrimEnd('\r', '\n');
             if (line.Length == 0 || line.StartsWith('#')) continue;
 
-            string[] parts = line.Split('\t');
-            if (parts.Length < 2) parts = line.Split(new[] { ' ' }, 2);
+            // 分隔符：TAB 或一个或多个空格都行
+            string[] parts = line.Split(new[] { '\t', ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length < 2) continue;
 
             string key = parts[0];
