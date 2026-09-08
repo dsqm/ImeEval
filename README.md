@@ -117,6 +117,9 @@ ImeBench.exe                          正常启动 GUI
 ImeBench.exe --smoke <码表> <文章> [间隔ms]
                                       无人值守：编译→标定(省略间隔时)→跑完→导出
                                       报告写入 exe 文件夹 data\smoke-report.*
+ImeBench.exe --compile <码表> <文章> [句尾延迟ms]
+                                      只做切分并打印每句按键串（无 UI、不碰焦点），
+                                      用于后台调试语料切分
 ImeBench.exe --poc                    打开底层技术验证窗口（排查问题时用）
 ```
 
