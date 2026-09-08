@@ -22,7 +22,7 @@ public sealed class CompileOptions
     /// <summary>音节分隔符（双拼/五笔可能需要；全拼留空）。不上屏。</summary>
     public string SeparatorKeys { get; set; } = "";
 
-    /// <summary>换行直接切分单元，不产生按键。</summary>
+    /// <summary>换行直接切分单元，收尾与普通句子相同（句尾延迟 + 上屏键）。</summary>
     public bool SkipNewline { get; set; } = true;
 
     /// <summary>视为标点的字符集合。</summary>
@@ -98,7 +98,7 @@ public static class Compiler
 
             if (opt.SkipNewline && (c == '\r' || c == '\n'))
             {
-                CloseUnit(false);
+                CloseUnit(true);   // 换行收尾的句子同样要上屏：补句尾延迟 + 上屏键（否则残留到下一句）
                 continue;
             }
 
