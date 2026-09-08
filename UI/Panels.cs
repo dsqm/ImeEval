@@ -106,7 +106,7 @@ internal sealed class CorpusPanel : UserControl
     };
     private readonly Label _lblStatus = new() { AutoSize = true, Padding = new Padding(4, 8, 4, 4) };
     private readonly NumericUpDown _nudMaxChars = Ui.Num(1, 500, 20, 60);
-    private readonly NumericUpDown _nudTailDelay = Ui.Num(0, 5000, 0, 70);
+    private readonly NumericUpDown _nudTailDelay = Ui.Num(0, 5000, 0, 110);
     private readonly CheckBox _cbPunct = new() { Text = "标点顶屏", Checked = true, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
     private readonly TextBox _tbCommit = new() { Text = "_", Width = 50 };
 
@@ -139,28 +139,21 @@ internal sealed class CorpusPanel : UserControl
         _settings = CorpusSettings.Load(SettingsFile);
         _settings.FilePath = SettingsFile;
 
-        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6 };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 顶部导航（与运行页「开始」同位，三击直达）
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 码表
+        var root = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
+        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 码表（含生成按键表按钮，与运行页「开始」同位）
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 编译选项
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 文章来源
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // 文章编辑
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 状态
 
-        // 行 0：顶部导航（按钮位置与运行页「开始」一致，方便连点）
-        var rowNav = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 44),
-        };
-        rowNav.Controls.Add(Ui.Btn("生成按键表", (_, _) => Compile()));
-
-        // 行 1：码表（data\码表\ 下拉选择，选中即载入）
+        // 行 0：码表（生成按键表按钮置首，与其他页主按钮同位，方便连点）
         var rowCode = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 40),
         };
         rowCode.Controls.AddRange(new Control[]
         {
+            Ui.Btn("生成按键表", (_, _) => Compile()),
             Ui.Lbl("码表(\\码表):"), _cbCode, _lblCodeStatus,
             Ui.Btn("重新加载", (_, _) => ReloadCodeList(_cbCode.SelectedItem as string)),
         });
@@ -222,12 +215,11 @@ internal sealed class CorpusPanel : UserControl
         };
         rowStatus.Controls.Add(_lblStatus);
 
-        root.Controls.Add(rowNav, 0, 0);
-        root.Controls.Add(rowCode, 0, 1);
-        root.Controls.Add(rowOpt, 0, 2);
-        root.Controls.Add(rowArt, 0, 3);
-        root.Controls.Add(gbArticle, 0, 4);
-        root.Controls.Add(rowStatus, 0, 5);
+        root.Controls.Add(rowCode, 0, 0);
+        root.Controls.Add(rowOpt, 0, 1);
+        root.Controls.Add(rowArt, 0, 2);
+        root.Controls.Add(gbArticle, 0, 3);
+        root.Controls.Add(rowStatus, 0, 4);
         Controls.Add(root);
 
         // 应用记忆的方案，再加载码表与文章列表
@@ -269,7 +261,7 @@ internal sealed class CorpusPanel : UserControl
         try
         {
             _code = CodeTable.Load(path);
-            _lblCodeStatus.Text = $"{Path.GetFileName(path)}：{_code.Count} 字，多音字 {_code.AmbiguousCount} 个（取首码）";
+            _lblCodeStatus.Text = $"{Path.GetFileName(path)}：{_code.Count} 字";
         }
         catch (Exception ex)
         {
