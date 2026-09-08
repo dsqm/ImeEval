@@ -381,8 +381,10 @@ internal sealed class KeyTablePanel : UserControl
         var inner = new Panel { Dock = DockStyle.Fill };
         inner.Controls.Add(_canvas);
         inner.Controls.Add(_lblInfo);
-        Controls.Add(buttons);
+
+        // 停靠按「后加先停」处理：inner 先加 → 占按钮以下的剩余空间；buttons 后加 → 停靠顶部
         Controls.Add(inner);
+        Controls.Add(buttons);
     }
 
     public void Bind(KeyTable table)
