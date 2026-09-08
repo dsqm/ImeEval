@@ -27,6 +27,8 @@ public sealed class KeyPlayer
     /// <summary>检测到高置信度自动上屏、跳过上屏键的次数（每轮开始前 ResetErrors 清零）。</summary>
     public int AutoCommitSkips { get; private set; }
 
+    private readonly List<ushort> _heldMods = new();   // 组合键期间按住的修饰键
+
     /// <summary>清空错误与计数（每轮测试开始前调用一次）。</summary>
     public void ResetErrors()
     {
@@ -55,23 +57,8 @@ public sealed class KeyPlayer
             if (token.IsCommit) { commit = token; continue; }   // 上屏键延后到编码/延迟之后统一处理
 
             var items = KeySeq.Parse(token.Keys, Errors);
-            foreach (var it in items)
-            {
-                if (it.Kind == KeySeqItem.ItemKind.Delay)
-                {
-                    WaitDelay(it.DelayMs, ctrl);
-                    continue;
-                }
-
-                if (!ctrl.AllowSend()) return ctrl.Status;
-
-                var st = it.Kind == KeySeqItem.ItemKind.Vk
-                    ? _sender.SendVk(it.Vk)
-                    : _sender.SendChar(it.Char);
-                if (st != SendStatus.Sent) return st;
-
-                pacer.Wait();
-            }
+            var st = PlayItems(items, ctrl, pacer);
+            if (st != SendStatus.Sent) return st;
         }
 
         if (commit != null)
@@ -82,22 +69,53 @@ public sealed class KeyPlayer
                 return SendStatus.Sent;
             }
 
-            foreach (var it in KeySeq.Parse(commit.Keys, Errors))
-            {
-                if (it.Kind == KeySeqItem.ItemKind.Delay) { WaitDelay(it.DelayMs, ctrl); continue; }
-
-                if (!ctrl.AllowSend()) return ctrl.Status;
-
-                var st = it.Kind == KeySeqItem.ItemKind.Vk
-                    ? _sender.SendVk(it.Vk)
-                    : _sender.SendChar(it.Char);
-                if (st != SendStatus.Sent) return st;
-
-                pacer.Wait();
-            }
+            var st = PlayItems(KeySeq.Parse(commit.Keys, Errors), ctrl, pacer);
+            if (st != SendStatus.Sent) return st;
         }
 
         return SendStatus.Sent;
+    }
+
+    private SendStatus PlayItems(List<KeySeqItem> items, RunController ctrl, Pacer pacer)
+    {
+        foreach (var it in items)
+        {
+            if (it.Kind == KeySeqItem.ItemKind.Delay) { WaitDelay(it.DelayMs, ctrl); continue; }
+
+            if (!ctrl.AllowSend()) { ReleaseHeld(); return ctrl.Status; }
+
+            var st = Play(it);
+            if (st != SendStatus.Sent) { ReleaseHeld(); return st; }
+
+            pacer.Wait();
+        }
+        return SendStatus.Sent;
+    }
+
+    /// <summary>发送单个条目：修饰键按下/抬起用单独的原语，其余与普通按键一致。</summary>
+    private SendStatus Play(KeySeqItem it)
+    {
+        switch (it.Kind)
+        {
+            case KeySeqItem.ItemKind.ModDown:
+                _heldMods.Add(it.Vk);
+                return _sender.SendKeyDown(it.Vk);
+            case KeySeqItem.ItemKind.ModUp:
+                _heldMods.Remove(it.Vk);
+                return _sender.SendKeyUp(it.Vk);
+            case KeySeqItem.ItemKind.Vk:
+                return _sender.SendVk(it.Vk);
+            default:
+                return _sender.SendChar(it.Char);
+        }
+    }
+
+    /// <summary>停止/失败时把还按住的修饰键松开，避免 Shift 卡住影响后续操作。</summary>
+    private void ReleaseHeld()
+    {
+        for (int i = _heldMods.Count - 1; i >= 0; i--)
+            _sender.SendKeyUp(_heldMods[i]);
+        _heldMods.Clear();
     }
 
     /// <summary>标定等场景直接播放一段裸按键串。</summary>

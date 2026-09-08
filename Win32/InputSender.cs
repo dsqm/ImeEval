@@ -59,6 +59,22 @@ public sealed class InputSender
         return LastError != 0 ? SendStatus.Failed : SendStatus.Sent;
     }
 
+    /// <summary>只按下（用于组合键，如 &lt;Shift&gt;1）。抬起前该修饰键保持按下状态。</summary>
+    public SendStatus SendKeyDown(ushort vk)
+    {
+        if (!Gate()) return _stopRequested ? SendStatus.Stopped : SendStatus.LostFocus;
+        Down(vk);
+        return LastError != 0 ? SendStatus.Failed : SendStatus.Sent;
+    }
+
+    /// <summary>抬起（配合 SendKeyDown 使用）。</summary>
+    public SendStatus SendKeyUp(ushort vk)
+    {
+        if (!_stopRequested && !Gate()) return SendStatus.LostFocus;
+        Up(vk);
+        return LastError != 0 ? SendStatus.Failed : SendStatus.Sent;
+    }
+
     /// <summary>
     /// 用硬编码 ASCII→VK 表，不走 VkKeyScanEx。
     /// 原因：VkKeyScanEx 是按"当前键盘布局"换算的，中文 IME 的 HKL 下结果未必可靠；

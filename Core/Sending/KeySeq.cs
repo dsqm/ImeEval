@@ -5,7 +5,7 @@ namespace ImeBench.Core;
 /// <summary>按键串条目：一个按键、一个原样字符，或一段延迟。</summary>
 public sealed class KeySeqItem
 {
-    public enum ItemKind { Vk, Char, Delay }
+    public enum ItemKind { Vk, Char, Delay, ModDown, ModUp }
 
     public ItemKind Kind { get; init; }
 
@@ -28,6 +28,7 @@ public sealed class KeySeqItem
 ///   _           → 空格
 ///   空格 / 制表符 → 直接忽略，当作不存在（避免肉眼分不清的空格混进来）
 ///   &lt;Shift&gt;   → 特殊键，支持 F1~F24、退格、回车、方向键、修饰键等全部可发送按键
+///   &lt;Shift+1&gt;  → 组合键：按住 Shift 敲 1（打出 !）。单点修饰键仍用 &lt;Shift&gt;，语义不冲突
 ///   {DELAY=100} → 在此等待 100 毫秒
 ///   其余字符     → 按普通字符发送（ASCII 虚拟键表 → VkKeyScanEx → Unicode 兜底）
 ///
@@ -146,8 +147,13 @@ public static class KeySeq
                     break;
                 }
                 string name = s[(i + 1)..end].Trim();
+                string src = s[i..(end + 1)];
+
+                // 组合键 <Shift+1> / <Ctrl+Alt+A>：前面是修饰键，最后一个是实际按键
+                if (name.Contains('+') && TryParseCombo(name, src, items, errors)) { i = end + 1; continue; }
+
                 if (TryNamedVk(name, out ushort vk))
-                    items.Add(new KeySeqItem { Kind = KeySeqItem.ItemKind.Vk, Vk = vk, Source = s[i..(end + 1)] });
+                    items.Add(new KeySeqItem { Kind = KeySeqItem.ItemKind.Vk, Vk = vk, Source = src });
                 else
                     errors?.Add($"无法识别的按键名 <{name}>");
                 i = end + 1;
@@ -160,7 +166,45 @@ public static class KeySeq
         return items;
     }
 
-    /// <summary>这段按键串实际会发送多少个按键（不含延迟）。</summary>
+    /// <summary>这段按键串实际会发送多少个按键（不含延迟；组合键的按下/抬起不计）。</summary>
     public static int CountKeys(string? s)
-        => s == null ? 0 : Parse(s).Count(it => it.Kind != KeySeqItem.ItemKind.Delay);
+        => s == null ? 0 : Parse(s).Count(it =>
+            it.Kind is KeySeqItem.ItemKind.Vk or KeySeqItem.ItemKind.Char);
+
+    private static bool IsModifier(ushort vk)
+        => vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU || vk == VK_LWIN || vk == VK_RWIN;
+
+    /// <summary>解析 &lt;Shift+1&gt; 形式的组合键，成功返回 true（无论是否报错）。</summary>
+    private static bool TryParseCombo(string name, string source, List<KeySeqItem> items, List<string>? errors)
+    {
+        var parts = name.Split('+');
+        if (parts.Length < 2) return false;
+
+        var mods = new List<ushort>();
+        for (int k = 0; k < parts.Length - 1; k++)
+        {
+            if (!TryNamedVk(parts[k], out ushort mv) || !IsModifier(mv))
+            {
+                errors?.Add($"组合键 {source} 的修饰键无效：{parts[k]}（可用 Shift/Ctrl/Alt/Win）");
+                return true;
+            }
+            mods.Add(mv);
+        }
+
+        string last = parts[^1];
+        foreach (var m in mods)
+            items.Add(new KeySeqItem { Kind = KeySeqItem.ItemKind.ModDown, Vk = m, Source = source });
+
+        if (last.Length == 1 && !TryNamedVk(last, out _))
+            items.Add(new KeySeqItem { Kind = KeySeqItem.ItemKind.Char, Char = last[0], Source = source });
+        else if (TryNamedVk(last, out ushort kv))
+            items.Add(new KeySeqItem { Kind = KeySeqItem.ItemKind.Vk, Vk = kv, Source = source });
+        else
+            errors?.Add($"组合键 {source} 的按键无效：{last}");
+
+        for (int k = mods.Count - 1; k >= 0; k--)
+            items.Add(new KeySeqItem { Kind = KeySeqItem.ItemKind.ModUp, Vk = mods[k], Source = source });
+
+        return true;
+    }
 }
