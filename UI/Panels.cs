@@ -412,14 +412,8 @@ internal sealed class CorpusPanel : UserControl
     {
         string? text = Ui.ShowMulti(this, "设置标点按键",
             "每行一条：标点 + 空格 + 按键串（# 开头为注释）\r\n" +
-            "\r\n" +
-            "例：\r\n" +
-            "。      .                 ← 句号就是句号键\r\n" +
-            "！      <Shift+1>        ← 组合键：按住 Shift 敲 1\r\n" +
-            "……     <Shift+6>        ← 一次按键出两字，左列照实写全\r\n" +
-            "\r\n" +
-            "按键串里 _ 表示空格；{DELAY=100} 表示先等 100ms。\r\n" +
-            "「重置」恢复内置默认；改完点「确定」保存。",
+            "_ = 空格，{DELAY=100} = 等待 100ms\r\n" +
+            "「重置」恢复内置默认，改完点「确定」保存。",
             _punctText,
             resetText: PunctuationConfig.DefaultText);
         if (text == null) return;
