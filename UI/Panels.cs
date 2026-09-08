@@ -1,5 +1,4 @@
-using System.ComponentModel;
-using System.Text;
+using System.Globalization;
 using ImeBench.Core;
 
 namespace ImeBench.UI;
@@ -118,6 +117,9 @@ internal sealed class CorpusPanel : UserControl
 
     public event Action<KeyTable>? Compiled;
 
+    /// <summary>点「跳转到运行」时触发（主窗体切到运行页）。</summary>
+    public event Action? GoRunRequested;
+
     /// <summary>应用设置（含窗口大小记忆），供主窗体读写。</summary>
     public CorpusSettings Settings => _settings;
 
@@ -214,6 +216,7 @@ internal sealed class CorpusPanel : UserControl
             Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 40),
         };
         rowStatus.Controls.Add(Ui.Btn("生成按键表", (_, _) => Compile()));
+        rowStatus.Controls.Add(Ui.Btn("跳转到运行", (_, _) => GoRunRequested?.Invoke()));
         rowStatus.Controls.Add(_lblStatus);
 
         root.Controls.Add(rowCode, 0, 0);
@@ -348,140 +351,161 @@ internal sealed class CorpusPanel : UserControl
 }
 
 // ─────────────────────────────────────────────────────────────
-// 按键表面板：可编辑的中间产物
+// 按键表面板：只读预览——每句一行，上方标注编码、下方显示字词（类似拼音注音）
+// 作用是在跑测试前人工核对按键表，避免出错
 // ─────────────────────────────────────────────────────────────
 internal sealed class KeyTablePanel : UserControl
 {
-    private readonly DataGridView _grid = Ui.Grid();
+    private readonly PreviewCanvas _canvas = new();
     private readonly Label _lblInfo = new() { AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(6, 8, 6, 6) };
-    private KeyTable? _table;
-
-    public event Action? Edited;
-
-    public KeyTable? Table => _table;
 
     public KeyTablePanel()
     {
         Dock = DockStyle.Fill;
 
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "#", DataPropertyName = "Index", FillWeight = 6, ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "按键串（可编辑，⏎=确认上屏）", DataPropertyName = "DisplayText", FillWeight = 47 });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "期望", DataPropertyName = "Expected", FillWeight = 21, ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "实际", DataPropertyName = "Actual", FillWeight = 21, ReadOnly = true });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = "错", DataPropertyName = "Flag", FillWeight = 5, ReadOnly = true });
-        _grid.CellValueChanged += (_, _) => ApplyEdit();
-
-        var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 38, WrapContents = false, Padding = new Padding(3) };
-        buttons.Controls.Add(Ui.Btn("保存按键表", (_, _) => SaveTable()));
-        buttons.Controls.Add(Ui.Btn("载入按键表", (_, _) => LoadTable()));
-
         var inner = new Panel { Dock = DockStyle.Fill };
-        inner.Controls.Add(_grid);
-        inner.Controls.Add(buttons);
+        inner.Controls.Add(_canvas);
         inner.Controls.Add(_lblInfo);
         Controls.Add(inner);
     }
 
     public void Bind(KeyTable table)
     {
-        _table = table;
-        _grid.DataSource = new BindingList<Row>(table.Units.Select((u, i) => new Row
+        _canvas.Load(table);
+        _lblInfo.Text = $"共 {table.UnitCount} 句 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字 —— 上为编码，下为字词，只读预览";
+    }
+
+    /// <summary>注音式预览画布：每句一行（上方编码、下方字词），支持滚动，万句级流畅。</summary>
+    private sealed class PreviewCanvas : Panel
+    {
+        private sealed class Row
         {
-            Index = i,
-            Unit = u,
-            DisplayText = u.DisplayText,
-            Expected = table.ExpectedOf(u),
-        }).ToList());
-        _lblInfo.Text = $"共 {table.UnitCount} 个上屏单元 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字";
-    }
-
-    /// <summary>把某单元的实际结果写回网格。</summary>
-    public void SetActual(int index, string actual, bool correct)
-    {
-        if (_grid.DataSource is not BindingList<Row> rows) return;
-        if (index < 0 || index >= rows.Count) return;
-        rows[index].Actual = actual;
-        rows[index].Flag = correct ? "✓" : "✗";
-    }
-
-    public void RefreshGrid()
-    {
-        if (_grid.DataSource is BindingList<Row> rows)
-            _grid.Invalidate();
-    }
-
-    private void ApplyEdit()
-    {
-        if (_table == null || _grid.DataSource is not BindingList<Row> rows) return;
-        for (int i = 0; i < rows.Count && i < _table.Units.Count; i++)
-        {
-            var toks = ParseKeys(rows[i].DisplayText);
-            if (toks.Count > 0) _table.Units[i].Tokens = toks;
+            public int Index;                              // 句号（从 1 开始）
+            public List<(string Code, string Text)> Cols = new();   // 每字一列：编码在上，字词在下
+            public float Y;                                // 行顶逻辑 Y
+            public float Width;                            // 行宽
         }
-        Edited?.Invoke();
-    }
 
-    /// <summary>把显示串解析回 token 序列：⏎=确认上屏，␣=音节分隔符，其余为编码按键。</summary>
-    public static List<KeyToken> ParseKeys(string display)
-    {
-        var toks = new List<KeyToken>();
-        var sb = new StringBuilder();
-        foreach (char c in display)
+        private readonly List<Row> _rows = new();
+        private readonly Font _fontCode = new("Consolas", 10f);
+        private readonly Font _fontText = new("Microsoft YaHei", 12f);
+        private float _rowH, _codeH, _textH, _totalW;
+
+        public PreviewCanvas()
         {
-            if (c == '⏎')
+            Dock = DockStyle.Fill;
+            AutoScroll = true;
+            DoubleBuffered = true;
+            BackColor = Color.White;
+            ResizeRedraw = true;
+        }
+
+        public void Load(KeyTable? table)
+        {
+            _rows.Clear();
+            _totalW = 0;
+
+            if (table != null)
             {
-                Flush();
-                toks.Add(new KeyToken { Kind = KeyTokenKind.Commit, Keys = "_" });
+                float y = 6;
+                for (int i = 0; i < table.Units.Count; i++)
+                {
+                    var row = new Row { Index = i + 1 };
+                    var u = table.Units[i];
+
+                    // 编码列：带目标字符的 Key token，与期望文本逐字配对
+                    var codes = u.Tokens.Where(t => t.Target != null).Select(t => t.Keys).ToList();
+                    var texts = TextElements(table.ExpectedOf(u));
+                    int n = Math.Min(codes.Count, texts.Count);
+                    for (int k = 0; k < n; k++)
+                        row.Cols.Add((codes[k], texts[k]));
+                    // 数量对不齐时，字词照常显示，编码留空（不静默丢字）
+                    for (int k = codes.Count; k < texts.Count; k++)
+                        row.Cols.Add(("", texts[k]));
+
+                    row.Width = 4 + row.Cols.Sum(c => ColW(c.Code, c.Text)) + 10;
+                    row.Y = y;
+                    y += RowH() + 6;
+                    _totalW = Math.Max(_totalW, row.Width);
+                    _rows.Add(row);
+                }
             }
-            else if (c == '␣')
+
+            AutoScrollMinSize = new Size((int)Math.Ceiling(_totalW) + 20, (int)Math.Ceiling(_rows.Count * (RowH() + 6)) + 12);
+            Invalidate();
+        }
+
+        private float RowH()
+        {
+            if (_rowH == 0)
             {
-                Flush();
-                toks.Add(new KeyToken { Kind = KeyTokenKind.Sep, Keys = "_" });
+                using var g = CreateGraphics();
+                _codeH = _fontCode.GetHeight(g);
+                _textH = _fontText.GetHeight(g);
+                _rowH = _codeH + _textH + 8;
             }
-            else sb.Append(c);
+            return _rowH;
         }
-        Flush();
-        return toks;
 
-        void Flush()
+        private float ColW(string code, string text)
         {
-            if (sb.Length == 0) return;
-            toks.Add(new KeyToken { Kind = KeyTokenKind.Key, Keys = sb.ToString() });
-            sb.Clear();
+            using var g = CreateGraphics();
+            float w1 = g.MeasureString(code, _fontCode).Width;
+            float w2 = g.MeasureString(text, _fontText).Width;
+            return Math.Max(w1, w2) + 6;
         }
-    }
 
-    private void SaveTable()
-    {
-        if (_table == null) return;
-        using var dlg = new SaveFileDialog { Filter = "按键表|*.ikeys.json", FileName = "keytabel.ikeys.json" };
-        if (dlg.ShowDialog() != DialogResult.OK) return;
-        _table.Save(dlg.FileName);
-    }
-
-    private void LoadTable()
-    {
-        using var dlg = new OpenFileDialog { Filter = "按键表|*.ikeys.json" };
-        if (dlg.ShowDialog() != DialogResult.OK) return;
-        var t = KeyTable.Load(dlg.FileName);
-        if (t == null)
+        private static List<string> TextElements(string s)
         {
-            MessageBox.Show(this, "按键表解析失败。", "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            return;
+            var list = new List<string>();
+            var si = new StringInfo(s ?? "");
+            for (int i = 0; i < si.LengthInTextElements; i++)
+                list.Add(si.SubstringByTextElements(i, 1));
+            return list;
         }
-        Bind(t);
-    }
 
-    public sealed class Row
-    {
-        public int Index { get; set; }
-        public string DisplayText { get; set; } = "";
-        public string Expected { get; set; } = "";
-        public string Actual { get; set; } = "";
-        public string Flag { get; set; } = "";
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+            if (_rows.Count == 0)
+            {
+                using var f = new Font("Microsoft YaHei", 10f);
+                e.Graphics.DrawString("（还没有按键表——回语料页点「生成按键表」）", f, SystemBrushes.ControlText, 12, 12);
+                return;
+            }
 
-        [Browsable(false)]
-        public KeyUnit? Unit { get; set; }
+            var g = e.Graphics;
+            g.Clear(BackColor);
+            g.TranslateTransform(AutoScrollPosition.X, AutoScrollPosition.Y);
+
+            float viewTop = -AutoScrollPosition.Y;
+            float viewBottom = viewTop + Height;
+            float labelW = 46;
+
+            foreach (var row in _rows)
+            {
+                if (row.Y + RowH() < viewTop) continue;
+                if (row.Y > viewBottom) break;
+
+                // 句号 + 分隔线
+                using var fIdx = new Font("Consolas", 9f);
+                using var pSep = new Pen(Color.FromArgb(230, 230, 230));
+                g.DrawString($"{row.Index}.", fIdx, SystemBrushes.ControlText, 6, row.Y + 2);
+                g.DrawLine(pSep, labelW, row.Y + RowH() + 2, Math.Max(row.Width, viewBottom) + 200, row.Y + RowH() + 2);
+
+                float x = labelW;
+                foreach (var (code, text) in row.Cols)
+                {
+                    float w = ColW(code, text);
+                    var fmt = new StringFormat { Alignment = StringAlignment.Center };
+                    var rectCode = new RectangleF(x, row.Y + 1, w, _codeH);
+                    var rectText = new RectangleF(x, row.Y + _codeH + 5, w, _textH);
+                    g.DrawString(code, _fontCode, code.Length == 0 ? SystemBrushes.ControlLight : SystemBrushes.ControlText, rectCode, fmt);
+                    g.DrawString(text, _fontText, SystemBrushes.ControlText, rectText, fmt);
+                    x += w;
+                }
+            }
+        }
     }
 }
 

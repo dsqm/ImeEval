@@ -67,6 +67,7 @@ internal sealed class MainForm : Form
 
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 500 };
     private TabControl _tabs = null!;
+    private TabPage _pageRun = null!;   // 宿主所在的页——隐藏的页签里控件拿不到键盘焦点
 
     public MainForm()
     {
@@ -104,6 +105,7 @@ internal sealed class MainForm : Form
 
         var pageRun = new TabPage("运行") { Padding = new Padding(6) };
         pageRun.Controls.Add(BuildRunPage());
+        _pageRun = pageRun;
 
         var pageCorpus = new TabPage("语料") { Padding = new Padding(6) };
         pageCorpus.Controls.Add(_corpus);
@@ -202,6 +204,7 @@ internal sealed class MainForm : Form
             Log($"按键表已生成：{table.UnitCount} 个上屏单元 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字");
             _tabs.SelectedIndex = 1;   // 跳到按键表页
         };
+        _corpus.GoRunRequested += () => _tabs.SelectedIndex = 2;   // 跳到运行页
 
         _calib.StartRequested += (_, _) => _ = RunCalibAsync();
         _calib.Recommended += ms =>
@@ -271,7 +274,6 @@ internal sealed class MainForm : Form
     {
         if (InvokeRequired) { BeginInvoke(new Action<UnitResult>(OnUnitDone), u); return; }
 
-        _keyPanel.SetActual(u.Index, u.Actual, u.Correct);
         if (!u.Correct || !_cbOnlyError.Checked) _rows.Add(u);
         if (_lblStats.Parent != null && _runner != null)
             _lblStats.Text = _runner.Live.Summary();
@@ -460,6 +462,13 @@ internal sealed class MainForm : Form
     private bool ActivateHost()
     {
         if (!Visible || IsDisposed) return false;
+
+        // 宿主在「运行」页上：Tab页不可见时里面的控件拿不到键盘焦点，必须先切过去
+        if (_tabs.SelectedTab != _pageRun)
+        {
+            _tabs.SelectedIndex = _tabs.TabPages.IndexOf(_pageRun);
+            Application.DoEvents();   // 让页签切换和布局完成，否则焦点设置会落空
+        }
 
         if (GetForegroundWindow() != Handle)
         {
