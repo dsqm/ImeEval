@@ -70,7 +70,7 @@ internal static class Ui
         using var form = new Form
         {
             Text = title, StartPosition = FormStartPosition.CenterParent,
-            Font = new Font("Microsoft YaHei", 9f), Size = new Size(520, 480),
+            Font = new Font("Microsoft YaHei", 9f), Size = new Size(560, 540),
             MinimizeBox = false, ShowInTaskbar = false,
         };
         var lbl = new Label
@@ -78,19 +78,30 @@ internal static class Ui
             Text = prompt, Dock = DockStyle.Top, Height = 48,
             Padding = new Padding(8, 8, 8, 2), AutoSize = false,
         };
+        // 多行文本框只认 \r\n：先把 \n 统一换成换行，否则配置项会全挤在一行
+        string text = (value ?? "").Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
+
         var tb = new TextBox
         {
             Multiline = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Both,
             WordWrap = false, Font = new Font("Consolas", 10f),
-            Text = value, AcceptsReturn = true, AcceptsTab = true,
+            Text = text, AcceptsReturn = true, AcceptsTab = true,
         };
         var btns = new FlowLayoutPanel
         {
-            Dock = DockStyle.Bottom, Height = 44,
-            FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 6, 8, 6),
+            Dock = DockStyle.Bottom, Height = 48, WrapContents = false, AutoSize = false,
+            FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 8, 8, 8),
         };
-        var ok = new Button { Text = "确定", DialogResult = DialogResult.OK, Width = 90, Height = 28 };
-        var cancel = new Button { Text = "取消", DialogResult = DialogResult.Cancel, Width = 90, Height = 28 };
+        var ok = new Button
+        {
+            Text = "确定", DialogResult = DialogResult.OK,
+            Width = 96, Height = 30, AutoSize = false, Margin = new Padding(6, 0, 0, 0),
+        };
+        var cancel = new Button
+        {
+            Text = "取消", DialogResult = DialogResult.Cancel,
+            Width = 96, Height = 30, AutoSize = false, Margin = new Padding(6, 0, 0, 0),
+        };
         btns.Controls.Add(ok);
         btns.Controls.Add(cancel);
         form.AcceptButton = ok;
