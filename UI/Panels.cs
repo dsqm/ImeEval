@@ -611,6 +611,15 @@ internal sealed class CalibPanel : UserControl
         SafetyMarginMs = (int)_nudMargin.Value,
     };
 
+    /// <summary>恢复上次保存的标定参数。</summary>
+    public void ApplyOptions(string keys, string expect, int repeats, int margin)
+    {
+        _tbKeys.Text = keys;
+        _tbExpect.Text = expect;
+        _nudRepeats.Value = Math.Clamp(repeats, _nudRepeats.Minimum, _nudRepeats.Maximum);
+        _nudMargin.Value = Math.Clamp(margin, _nudMargin.Minimum, _nudMargin.Maximum);
+    }
+
     public void Append(string line)
     {
         if (InvokeRequired) { BeginInvoke(new Action<string>(Append), line); return; }

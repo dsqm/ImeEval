@@ -30,6 +30,76 @@ public static class Levenshtein
 
     public static int Distance(string a, string b) => Ops(a, b).Total;
 
+    /// <summary>
+    /// 回溯对齐路径，返回编辑操作序列（顺序与文本一致）：
+    ///   M = 匹配；S = 替换（Ae=期望字，Be=实际字）；D = 删除（期望有实际无）；I = 插入（实际多出）。
+    /// 供逐句对照做 [括号标错] / 颜色标记。
+    /// </summary>
+    public static List<(char Op, char Ae, char Be)> Trace(string a, string b)
+    {
+        int n = a.Length, m = b.Length;
+        var ops = new List<(char, char, char)>(n + m);
+        if (n == 0) { foreach (var c in b) ops.Add(('I', '\0', c)); return ops; }
+        if (m == 0) { foreach (var c in a) ops.Add(('D', c, '\0')); return ops; }
+
+        Ensure(n, m);
+        int[,] d = _buf;
+
+        for (int i = 0; i <= n; i++) d[i, 0] = i;
+        for (int j = 0; j <= m; j++) d[0, j] = j;
+
+        for (int i = 1; i <= n; i++)
+        {
+            char ca = a[i - 1];
+            for (int j = 1; j <= m; j++)
+            {
+                int cost = ca == b[j - 1] ? 0 : 1;
+                int diag = d[i - 1, j - 1] + cost;
+                int del = d[i - 1, j] + 1;
+                int ins = d[i, j - 1] + 1;
+                int v = diag < del ? diag : del;
+                if (ins < v) v = ins;
+                d[i, j] = v;
+            }
+        }
+
+        int x = n, y = m;
+        while (x > 0 || y > 0)
+        {
+            if (x > 0 && y > 0 && a[x - 1] == b[y - 1]) { ops.Add(('M', a[x - 1], b[y - 1])); x--; y--; continue; }
+            int diag = x > 0 && y > 0 ? d[x - 1, y - 1] : int.MaxValue;
+            int up = x > 0 ? d[x - 1, y] : int.MaxValue;
+            int left = y > 0 ? d[x, y - 1] : int.MaxValue;
+            if (diag <= up && diag <= left) { ops.Add(('S', a[x - 1], b[y - 1])); x--; y--; }
+            else if (up <= left) { ops.Add(('D', a[x - 1], '\0')); x--; }
+            else { ops.Add(('I', '\0', b[y - 1])); y--; }
+        }
+
+        ops.Reverse();
+        return ops;
+    }
+
+    /// <summary>
+    /// 生成标错文本：错处用 [ ] 括起。
+    /// 返回 (标错后的期望串, 标错后的实际串)，如 中国人[民]万岁 / 中国人[名字]万岁。
+    /// </summary>
+    public static (string MarkedExpected, string MarkedActual) Mark(string expected, string actual)
+    {
+        var e = new StringBuilder();
+        var a = new StringBuilder();
+        foreach (var (op, ae, be) in Trace(expected, actual))
+        {
+            switch (op)
+            {
+                case 'M': e.Append(ae); a.Append(be); break;
+                case 'S': e.Append('[').Append(ae).Append(']'); a.Append('[').Append(be).Append(']'); break;
+                case 'D': e.Append('[').Append(ae).Append(']'); break;
+                case 'I': a.Append('[').Append(be).Append(']'); break;
+            }
+        }
+        return (e.ToString(), a.ToString());
+    }
+
     public static EditOps Ops(string a, string b)
     {
         int n = a.Length, m = b.Length;

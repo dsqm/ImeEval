@@ -158,6 +158,17 @@ public sealed class CorpusSettings
     public int WindowHeight { get; set; } = 0;
     public bool WindowMaximized { get; set; } = false;
 
+    // 运行页参数
+    public int IntervalMs { get; set; } = 2;
+    public int SettleMs { get; set; } = 40;
+    public bool OnlyErrors { get; set; } = true;
+
+    // 标定页参数
+    public string CalibKeys { get; set; } = "vsgo_";
+    public string CalibExpect { get; set; } = "中国";
+    public int CalibRepeats { get; set; } = 20;
+    public int CalibMargin { get; set; } = 1;
+
     [JsonIgnore] public string FilePath { get; set; } = "";
 
     public static CorpusSettings Load(string path)

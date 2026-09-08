@@ -83,6 +83,7 @@ internal sealed class MainForm : Form
         Font = new Font("Microsoft YaHei", 9f);
 
         RestoreWindowSize();
+        RestoreRunOptions();
 
         BuildResultGrid();
         _statusBar.Controls.Add(_lblStatus);
@@ -547,6 +548,7 @@ internal sealed class MainForm : Form
         if (_hotkeyOk) UnregisterHotKey(Handle, HOTKEY_ID);
         _timer.Stop();
         RememberWindowSize();
+        RememberRunOptions();
         _corpus.SaveSettings();   // 便携化：方案随程序走
         base.OnFormClosing(e);
     }
@@ -559,6 +561,30 @@ internal sealed class MainForm : Form
             Size = new Size(s.WindowWidth, s.WindowHeight);
         if (s.WindowMaximized)
             WindowState = FormWindowState.Maximized;
+    }
+
+    /// <summary>恢复运行页/标定页参数（按键间隔、静默期、标定输入、只看错误）。</summary>
+    private void RestoreRunOptions()
+    {
+        var s = _corpus.Settings;
+        _nudInterval.Value = Math.Clamp(s.IntervalMs, _nudInterval.Minimum, _nudInterval.Maximum);
+        _nudSettle.Value = Math.Clamp(s.SettleMs, _nudSettle.Minimum, _nudSettle.Maximum);
+        _cbOnlyError.Checked = s.OnlyErrors;
+        _calib.ApplyOptions(s.CalibKeys, s.CalibExpect, s.CalibRepeats, s.CalibMargin);
+    }
+
+    /// <summary>关窗前把全部参数写进设置。</summary>
+    private void RememberRunOptions()
+    {
+        var s = _corpus.Settings;
+        s.IntervalMs = (int)_nudInterval.Value;
+        s.SettleMs = (int)_nudSettle.Value;
+        s.OnlyErrors = _cbOnlyError.Checked;
+        var co = _calib.CurrentOptions;
+        s.CalibKeys = co.Keys;
+        s.CalibExpect = co.Expect;
+        s.CalibRepeats = co.Repeats;
+        s.CalibMargin = co.SafetyMarginMs;
     }
 
     private void RememberWindowSize()
