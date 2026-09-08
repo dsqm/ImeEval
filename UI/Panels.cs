@@ -100,7 +100,7 @@ internal sealed class CorpusPanel : UserControl
     private readonly DataGridView _gridIssues = Ui.Grid();
     private readonly NumericUpDown _nudMaxKeys = Ui.Num(4, 200, 40);
     private readonly CheckBox _cbPunct = new() { Text = "标点顶屏", Checked = true, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
-    private readonly TextBox _tbCommit = new() { Text = " ", Width = 40 };
+    private readonly TextBox _tbCommit = new() { Text = "_", Width = 40 };
     private readonly TextBox _tbSep = new() { Text = "", Width = 40 };
 
     private CodeTable _code = new();
@@ -345,12 +345,12 @@ internal sealed class KeyTablePanel : UserControl
             if (c == '⏎')
             {
                 Flush();
-                toks.Add(new KeyToken { Kind = KeyTokenKind.Commit, Keys = " " });
+                toks.Add(new KeyToken { Kind = KeyTokenKind.Commit, Keys = "_" });
             }
             else if (c == '␣')
             {
                 Flush();
-                toks.Add(new KeyToken { Kind = KeyTokenKind.Sep, Keys = " " });
+                toks.Add(new KeyToken { Kind = KeyTokenKind.Sep, Keys = "_" });
             }
             else sb.Append(c);
         }
@@ -404,7 +404,7 @@ internal sealed class KeyTablePanel : UserControl
 // ─────────────────────────────────────────────────────────────
 internal sealed class CalibPanel : UserControl
 {
-    private readonly TextBox _tbKeys = new() { Text = "zhongguo ", Width = 160 };
+    private readonly TextBox _tbKeys = new() { Text = "zhongguo_", Width = 160 };
     private readonly TextBox _tbExpect = new() { Text = "中国", Width = 90 };
     private readonly NumericUpDown _nudRepeats = Ui.Num(3, 200, 20);
     private readonly NumericUpDown _nudMargin = Ui.Num(0, 20, 1);

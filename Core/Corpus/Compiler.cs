@@ -33,8 +33,8 @@ public sealed class CompileOptions
     /// <summary>遇到标点时切分上屏单元（利用 IME 的标点顶屏）。</summary>
     public bool PunctCommits { get; set; } = true;
 
-    /// <summary>确认键（默认空格）。</summary>
-    public string CommitKeys { get; set; } = " ";
+    /// <summary>确认键（默认 "_" = 空格；按键串里真实空格会被忽略）。</summary>
+    public string CommitKeys { get; set; } = "_";
 
     /// <summary>音节分隔符（双拼/五笔可能需要；全拼留空）。不上屏。</summary>
     public string SeparatorKeys { get; set; } = "";
@@ -149,7 +149,7 @@ public static class Compiler
             }
 
             unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Key, Keys = keys, Target = c });
-            unitKeys += keys.Length;
+            unitKeys += KeySeq.CountKeys(keys);
             expected.Append(c);
             res.CoveredChars++;
 
@@ -237,7 +237,7 @@ public static class Compiler
                 unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Sep, Keys = opt.SeparatorKeys });
 
             unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Key, Keys = keys, Target = c });
-            unitKeys += keys.Length;
+            unitKeys += KeySeq.CountKeys(keys);
             expected.Append(c);
             res.CoveredChars++;
 

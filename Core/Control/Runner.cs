@@ -134,9 +134,13 @@ public sealed class Runner
         if (seed != null) result.Stats.CopyFrom(seed);
 
         _ctrl.Reset();
+        _player.ResetErrors();
         await Task.Run(() => RunLoop(table, opt, startIndex, result));
         return result;
     }
+
+    /// <summary>本轮发送层的按键串解析错误（无法识别的特殊键/指令等）。</summary>
+    public IReadOnlyList<string> SendErrors => _player.Errors;
 
     private void RunLoop(KeyTable table, RunOptions opt, int startIndex, RunResult result)
     {

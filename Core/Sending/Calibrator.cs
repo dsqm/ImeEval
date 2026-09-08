@@ -6,8 +6,8 @@ namespace ImeBench.Core;
 /// <summary>速度标定参数。</summary>
 public sealed class CalibOptions
 {
-    /// <summary>按键串。空格视为"确认上屏"（COMMIT），例如 "zhongguo "。</summary>
-    public string Keys { get; set; } = "zhongguo ";
+    /// <summary>按键串。语法见 KeySeq：_ = 空格，&lt;Enter&gt; 特殊键，{DELAY=100} 延迟。例如 "zhongguo_"。</summary>
+    public string Keys { get; set; } = "zhongguo_";
 
     /// <summary>期望上屏文本。</summary>
     public string Expect { get; set; } = "中国";
@@ -132,10 +132,20 @@ public static class Calibrator
             host.ResetSafe();
             pacer.Reset();
 
-            foreach (char c in opt.Keys)
+            foreach (var it in KeySeq.Parse(opt.Keys))
             {
+                if (ctrl.StopRequested) return step;
+
+                if (it.Kind == KeySeqItem.ItemKind.Delay)
+                {
+                    var dsw = Stopwatch.StartNew();
+                    while (dsw.ElapsedMilliseconds < it.DelayMs && !ctrl.StopRequested)
+                        Thread.Sleep(Math.Min(10, Math.Max(1, it.DelayMs - (int)dsw.ElapsedMilliseconds)));
+                    continue;
+                }
+
                 if (!ctrl.AllowSend()) return step;
-                sender.SendChar(c);
+                _ = it.Kind == KeySeqItem.ItemKind.Vk ? sender.SendVk(it.Vk) : sender.SendChar(it.Char);
                 pacer.Wait();
             }
 

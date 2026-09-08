@@ -25,7 +25,7 @@ public sealed class KeyToken
 {
     public KeyTokenKind Kind { get; set; } = KeyTokenKind.Key;
 
-    /// <summary>实际要发送的按键串。Commit 通常为 " "（空格）。</summary>
+    /// <summary>实际要发送的按键串。语法见 KeySeq：Commit 通常为 "_"（空格）。</summary>
     public string Keys { get; set; } = "";
 
     /// <summary>该 token 对应的目标字符（Key 类型才有）。</summary>
@@ -68,7 +68,7 @@ public sealed class KeyUnit
     public string DisplayText => string.Concat(Tokens.Select(t => t.Display));
 
     [JsonIgnore]
-    public int SendLength => Tokens.Sum(t => t.Keys.Length);
+    public int SendLength => Tokens.Sum(t => KeySeq.CountKeys(t.Keys));
 }
 
 /// <summary>整张按键表：测试脚本的完整、可复现描述。</summary>

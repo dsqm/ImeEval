@@ -241,6 +241,8 @@ internal sealed class MainForm : Form
         UpdateButtons();
 
         Log("结束：" + res.ReasonText);
+        foreach (var e in _runner.SendErrors.Distinct())
+            Log("按键串警告：" + e);
         Log(res.Stats.Summary());
         try { Exporter.ToJson(LastRunFile, res, BuildMeta()); } catch { }
     }
