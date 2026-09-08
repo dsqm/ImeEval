@@ -64,8 +64,8 @@ internal static class Ui
     };
 
     /// <summary>极简输入对话框（不引 Microsoft.VisualBasic 依赖）。</summary>
-    /// <summary>多行输入框（标点按键配置等），返回 null = 取消。</summary>
-    public static string? ShowMulti(IWin32Window owner, string title, string prompt, string value)
+    /// <summary>多行输入框（标点按键配置等），返回 null = 取消。resetText 非空时提供「重置」按钮。</summary>
+    public static string? ShowMulti(IWin32Window owner, string title, string prompt, string value, string? resetText = null)
     {
         using var form = new Form
         {
@@ -105,6 +105,20 @@ internal static class Ui
         };
         btns.Controls.Add(ok);
         btns.Controls.Add(cancel);
+
+        // 重置：把编辑框恢复成内置默认（配置存过盘后想换回默认时用）
+        if (resetText != null)
+        {
+            var reset = new Button
+            {
+                Text = "重置", Width = 96, Height = 30, AutoSize = false,
+                Margin = new Padding(6, 0, 0, 0),
+                TextAlign = ContentAlignment.MiddleCenter,
+            };
+            reset.Click += (_, _) =>
+                tb.Text = (resetText ?? "").Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
+            btns.Controls.Add(reset);
+        }
         form.AcceptButton = ok;
         form.CancelButton = cancel;
 
@@ -398,7 +412,8 @@ internal sealed class CorpusPanel : UserControl
         string? text = Ui.ShowMulti(this, "设置标点按键",
             "每行一条：标点字符 + 空格或制表符 + 按键串（# 开头为注释）\n" +
             "例：。 .     ！ <Shift+1>     _ = 空格     {DELAY=100} = 等待",
-            _punctText);
+            _punctText,
+            resetText: PunctuationConfig.DefaultText);
         if (text == null) return;
 
         var errors = new List<string>();
