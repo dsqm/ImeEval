@@ -6,8 +6,8 @@ namespace ImeBench.Core;
 /// <summary>速度标定参数。</summary>
 public sealed class CalibOptions
 {
-    /// <summary>按键串。语法见 KeySeq：_ = 空格，&lt;Enter&gt; 特殊键，{DELAY=100} 延迟。例如 "zhongguo_"。</summary>
-    public string Keys { get; set; } = "zhongguo_";
+    /// <summary>按键串。语法见 KeySeq：_ = 空格，&lt;Enter&gt; 特殊键，{DELAY=100} 延迟。默认 "vsgo_"（小鹤双拼"中国"+空格）。</summary>
+    public string Keys { get; set; } = "vsgo_";
 
     /// <summary>期望上屏文本。</summary>
     public string Expect { get; set; } = "中国";

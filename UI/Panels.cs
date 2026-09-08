@@ -91,10 +91,10 @@ internal static class Ui
 // ─────────────────────────────────────────────────────────────
 internal sealed class CorpusPanel : UserControl
 {
-    // 便携化路径：全部定死在 exe 文件夹下
+    // 便携化路径：码表和文章直接放 exe 文件夹下的一级目录
     public static readonly string DataDir = Path.Combine(AppContext.BaseDirectory, "data");
-    public static readonly string CodeDir = Path.Combine(DataDir, "码表");
-    public static readonly string ArticleDir = Path.Combine(DataDir, "文章");
+    public static readonly string CodeDir = Path.Combine(AppContext.BaseDirectory, "码表");
+    public static readonly string ArticleDir = Path.Combine(AppContext.BaseDirectory, "文章");
     private static readonly string SettingsFile = Path.Combine(DataDir, "settings.json");
 
     private readonly Label _lblCodeStatus = new() { AutoSize = true, Padding = new Padding(0, 8, 8, 0) };
@@ -151,9 +151,8 @@ internal sealed class CorpusPanel : UserControl
         };
         rowCode.Controls.AddRange(new Control[]
         {
-            Ui.Lbl("码表(data\\码表):"), _cbCode, _lblCodeStatus,
+            Ui.Lbl("码表(\\码表):"), _cbCode, _lblCodeStatus,
             Ui.Btn("重新加载", (_, _) => ReloadCodeList(_cbCode.SelectedItem as string)),
-            Ui.Btn("生成示例码表", (_, _) => NewSampleCode()),
         });
         _cbCode.SelectedIndexChanged += (_, _) =>
         {
@@ -185,7 +184,7 @@ internal sealed class CorpusPanel : UserControl
         };
         rowArt.Controls.AddRange(new Control[]
         {
-            Ui.Lbl("文章(data\\文章):"), _cbArticle,
+            Ui.Lbl("文章(\\文章):"), _cbArticle,
             Ui.Btn("打开文章文件夹", (_, _) =>
             {
                 try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = ArticleDir, UseShellExecute = true }); }
@@ -252,7 +251,7 @@ internal sealed class CorpusPanel : UserControl
         if (_cbCode.SelectedItem is string file)
             LoadCodeFile(Path.Combine(CodeDir, file));
         else
-            _lblCodeStatus.Text = $"（{CodeDir} 里没有 .txt 码表——点「生成示例码表」试试）";
+            _lblCodeStatus.Text = $"（\\码表 里没有 .txt 码表）";
     }
 
     private void LoadCodeFile(string path)
@@ -266,13 +265,6 @@ internal sealed class CorpusPanel : UserControl
         {
             MessageBox.Show(this, "码表加载失败：" + ex.Message, "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
-    }
-
-    private void NewSampleCode()
-    {
-        string path = Path.Combine(CodeDir, "示例码表.txt");
-        File.WriteAllText(path, CodeTable.SampleText, new UTF8Encoding(false));
-        ReloadCodeList(Path.GetFileName(path));
     }
 
     /// <summary>刷新文章下拉框；尽量恢复上次选中的方案。</summary>
@@ -329,7 +321,7 @@ internal sealed class CorpusPanel : UserControl
         }
         if (_code.Count == 0)
         {
-            MessageBox.Show(this, $"码表为空——请把码表 .txt 放进 {CodeDir} 后点「重新加载」。", "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "码表为空——请把码表 .txt 放进 exe 旁的「\\码表」文件夹后点「重新加载」。", "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
@@ -495,7 +487,7 @@ internal sealed class KeyTablePanel : UserControl
 // ─────────────────────────────────────────────────────────────
 internal sealed class CalibPanel : UserControl
 {
-    private readonly TextBox _tbKeys = new() { Text = "zhongguo_", Width = 160 };
+    private readonly TextBox _tbKeys = new() { Text = "vsgo_", Width = 160 };
     private readonly TextBox _tbExpect = new() { Text = "中国", Width = 90 };
     private readonly NumericUpDown _nudRepeats = Ui.Num(3, 200, 20);
     private readonly NumericUpDown _nudMargin = Ui.Num(0, 20, 1);

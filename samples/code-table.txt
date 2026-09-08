@@ -1,18 +1,18 @@
-# ImeBench 样例码表
+# ImeBench 样例码表（小鹤双拼）
 # 格式：字符<TAB>按键串
-# 同一字符多行 = 一字多码（多音字），编译时会在清单里让你指定
+# 同一字符多行 = 一字多码（多音字），编译时自动取首码
 #
 # 按键串语法（详见 README）：
 #   _           空格（真实的空格字符会被忽略）
 #   <Shift>     特殊键：<Enter> <Backspace> <Del> <F1> <Up> <Esc> ...
 #   {DELAY=100} 在此等待 100 毫秒
 #
-# 这份只是最小示例，够跑通 smoke 测试；真实使用请换成你的完整码表
-中	zhong
-国	guo
-人	ren
-民	min
-万	wan
-岁	sui
+# 示例：中国人民万岁 → vsgorfmbwjsv（小鹤双拼）
+中	vs
+国	go
+人	rf
+民	mb
+万	wj
+岁	sv
 ，	,
 。	.

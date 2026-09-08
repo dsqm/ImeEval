@@ -89,7 +89,7 @@ internal sealed class MainForm : Form
         _timer.Start();
 
         Log("就绪。流程：① 语料页加载码表+粘贴文章→编译 ② 标定页测速度 ③ 回到本页开始。");
-        Log("提示：开始前请确认已切换到要测的输入法，且处于【全拼】模式。");
+        Log("提示：开始前请确认输入法模式与码表编码一致（如码表是小鹤双拼，输入法也要在小鹤双拼）。");
         CheckExistingCheckpoint();
     }
 

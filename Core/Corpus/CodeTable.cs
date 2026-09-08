@@ -61,19 +61,4 @@ public sealed class CodeTable
             foreach (string code in kv.Value)
                 w.WriteLine($"{kv.Key}\t{code}");
     }
-
-    /// <summary>一份最小全拼样例码表，方便用户照着改（不含汉字注音，只是格式示例）。</summary>
-    public static string SampleText => """
-        # 码表格式：字符<TAB>按键串
-        # 同一字符写多行 = 一字多码（多音字），编译时会在清单里让你指定用哪个
-        # 示例（简码，仅演示格式）：
-        中	zhong
-        国	guo
-        人	ren
-        民	min
-        万	wan
-        岁	sui
-        ，	,
-        。	.
-        """;
 }
