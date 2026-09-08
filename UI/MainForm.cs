@@ -15,6 +15,7 @@ internal sealed class MainForm : Form
     private static readonly string AppDir = CorpusPanel.DataDir;
     private static string CheckpointFile => Path.Combine(AppDir, "checkpoint.json");
     private static string LastRunFile => Path.Combine(AppDir, "last-run.json");
+    private static string SessionLogFile => Path.Combine(AppDir, "session.log");
 
     private readonly ImeHost _host = new()
     {
@@ -59,11 +60,6 @@ internal sealed class MainForm : Form
         Padding = new Padding(10, 3, 10, 5),
         Font = new Font("Microsoft YaHei", 9.5f),
         Text = "（尚未开始——点「▶ 开始」后这里实时刷新）",
-    };
-    private readonly TextBox _tbLog = new()
-    {
-        Multiline = true, ScrollBars = ScrollBars.Both, ReadOnly = true,
-        Dock = DockStyle.Fill, Font = new Font("Consolas", 9f), WordWrap = false,
     };
     private readonly Panel _statusBar = new() { Dock = DockStyle.Bottom, Height = 38 };
     private readonly Label _lblStatus = new()
@@ -179,13 +175,10 @@ internal sealed class MainForm : Form
         resultInner.Controls.Add(resultBtns);
         gbResult.Controls.Add(resultInner);
 
-        // 日志（底部）
-        var gbLog = new GroupBox { Text = "日志", Dock = DockStyle.Bottom, Height = 140, Padding = new Padding(6) };
-        gbLog.Controls.Add(_tbLog);
+        // 日志已取消独立面板：最新一条显示在底部状态栏，完整日志落盘 data\session.log
 
         // 停靠按「后加先停」处理：bar 最后加 → 最顶；gbResult 最先加 → 占余下空间
         container.Controls.Add(gbResult);
-        container.Controls.Add(gbLog);
         container.Controls.Add(gbStats);
         container.Controls.Add(gbHost);
         container.Controls.Add(bar);
@@ -478,7 +471,10 @@ internal sealed class MainForm : Form
 
     private void SaveLog(string path)
     {
-        try { File.WriteAllText(path, _tbLog.Text); } catch { }
+        lock (_logLock)
+        {
+            try { File.WriteAllLines(path, _logLines); } catch { }
+        }
     }
 
     // ───────────────────────── 杂项 ─────────────────────────
@@ -566,12 +562,26 @@ internal sealed class MainForm : Form
         return false;
     }
 
+    private readonly object _logLock = new();
+    private readonly List<string> _logLines = new();
+
+    /// <summary>
+    /// 日志：最新一条显示在底部状态栏，完整时间线落盘 data\session.log。
+    /// 独立日志面板已取消（实时统计已承担运行期反馈）。
+    /// </summary>
     public void Log(string s)
     {
-        if (_tbLog.IsDisposed) return;
-        if (InvokeRequired) { BeginInvoke(new Action<string>(Log), s); return; }
-        if (_tbLog.TextLength > 200_000) _tbLog.Clear();
-        _tbLog.AppendText($"[{DateTime.Now:HH:mm:ss}] {s}{Environment.NewLine}");
+        var line = $"[{DateTime.Now:HH:mm:ss}] {s}";
+        lock (_logLock) _logLines.Add(line);
+        try { File.AppendAllText(SessionLogFile, line + Environment.NewLine); } catch { }
+
+        try
+        {
+            if (_lblStatus.IsDisposed) return;
+            if (_lblStatus.InvokeRequired) { _lblStatus.BeginInvoke(new Action<string>(x => _lblStatus.Text = x), s); return; }
+            _lblStatus.Text = s;
+        }
+        catch { }
     }
 
     protected override void OnLoad(EventArgs e)
