@@ -118,6 +118,9 @@ internal sealed class CorpusPanel : UserControl
 
     public event Action<KeyTable>? Compiled;
 
+    /// <summary>应用设置（含窗口大小记忆），供主窗体读写。</summary>
+    public CorpusSettings Settings => _settings;
+
     /// <summary>码表来源说明（写进报告 meta）。</summary>
     public string CodeTablePath => CodeDir;
 
@@ -210,7 +213,7 @@ internal sealed class CorpusPanel : UserControl
         {
             Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 40),
         };
-        rowStatus.Controls.Add(Ui.Btn("编译 →", (_, _) => Compile()));
+        rowStatus.Controls.Add(Ui.Btn("生成按键表", (_, _) => Compile()));
         rowStatus.Controls.Add(_lblStatus);
 
         root.Controls.Add(rowCode, 0, 0);

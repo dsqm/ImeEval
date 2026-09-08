@@ -75,6 +75,8 @@ internal sealed class MainForm : Form
         Size = new Size(1080, 780);
         Font = new Font("Microsoft YaHei", 9f);
 
+        RestoreWindowSize();
+
         BuildResultGrid();
         _statusBar.Controls.Add(_lblStatus);
         Controls.Add(BuildRoot());
@@ -88,7 +90,7 @@ internal sealed class MainForm : Form
         _timer.Tick += (_, _) => UpdateBar();
         _timer.Start();
 
-        Log("就绪。流程：① 语料页加载码表+粘贴文章→编译 ② 标定页测速度 ③ 回到本页开始。");
+        Log("就绪。流程：① 语料页选码表+文章→生成按键表 ② 标定页测速度 ③ 回到本页开始。");
         Log("提示：开始前请确认输入法模式与码表编码一致（如码表是小鹤双拼，输入法也要在小鹤双拼）。");
         CheckExistingCheckpoint();
     }
@@ -112,7 +114,8 @@ internal sealed class MainForm : Form
         var pageCalib = new TabPage("速度标定") { Padding = new Padding(6) };
         pageCalib.Controls.Add(_calib);
 
-        tabs.TabPages.AddRange(new[] { pageRun, pageCorpus, pageKeys, pageCalib });
+        // 页签顺序按使用流程：语料 → 按键表 → 运行 → 速度标定
+        tabs.TabPages.AddRange(new[] { pageCorpus, pageKeys, pageRun, pageCalib });
         return tabs;
     }
 
@@ -196,8 +199,8 @@ internal sealed class MainForm : Form
             _table = table;
             _keyPanel.Bind(table);
             _rows.Clear();
-            Log($"编译完成：{table.UnitCount} 个上屏单元 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字");
-            _tabs.SelectedIndex = 2;
+            Log($"按键表已生成：{table.UnitCount} 个上屏单元 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字");
+            _tabs.SelectedIndex = 1;   // 跳到按键表页
         };
 
         _calib.StartRequested += (_, _) => _ = RunCalibAsync();
@@ -519,8 +522,30 @@ internal sealed class MainForm : Form
     {
         if (_hotkeyOk) UnregisterHotKey(Handle, HOTKEY_ID);
         _timer.Stop();
+        RememberWindowSize();
         _corpus.SaveSettings();   // 便携化：方案随程序走
         base.OnFormClosing(e);
+    }
+
+    /// <summary>恢复上次记录的窗口大小（关窗时由 RememberWindowSize 写入）。</summary>
+    private void RestoreWindowSize()
+    {
+        var s = _corpus.Settings;
+        if (s.WindowWidth >= 400 && s.WindowHeight >= 300)
+            Size = new Size(s.WindowWidth, s.WindowHeight);
+        if (s.WindowMaximized)
+            WindowState = FormWindowState.Maximized;
+    }
+
+    private void RememberWindowSize()
+    {
+        var s = _corpus.Settings;
+        if (WindowState == FormWindowState.Normal)
+        {
+            s.WindowWidth = Width;
+            s.WindowHeight = Height;
+        }
+        s.WindowMaximized = WindowState == FormWindowState.Maximized;
     }
 
     protected override void WndProc(ref Message m)

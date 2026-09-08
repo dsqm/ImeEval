@@ -153,6 +153,11 @@ public sealed class CorpusSettings
     public string CommitKeys { get; set; } = "_";
     public bool PunctCommits { get; set; } = true;
 
+    // 窗口大小记忆（0 = 未记录过，用默认尺寸）
+    public int WindowWidth { get; set; } = 0;
+    public int WindowHeight { get; set; } = 0;
+    public bool WindowMaximized { get; set; } = false;
+
     [JsonIgnore] public string FilePath { get; set; } = "";
 
     public static CorpusSettings Load(string path)
