@@ -146,6 +146,7 @@ public static class Compiler
 /// <summary>便携化运行时设置（存 exe 文件夹 data\settings.json，不碰注册表和用户目录）。</summary>
 public sealed class CorpusSettings
 {
+    public string Code { get; set; } = "";
     public string Article { get; set; } = "";
     public int MaxCharsPerUnit { get; set; } = 20;
     public int TailDelayMs { get; set; } = 0;

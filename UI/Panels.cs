@@ -98,20 +98,21 @@ internal sealed class CorpusPanel : UserControl
     private static readonly string SettingsFile = Path.Combine(DataDir, "settings.json");
 
     private readonly Label _lblCodeStatus = new() { AutoSize = true, Padding = new Padding(0, 8, 8, 0) };
+    private readonly ComboBox _cbCode = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 260 };
+    private readonly ComboBox _cbArticle = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 380 };
     private readonly TextBox _tbArticle = new()
     {
         Multiline = true, ScrollBars = ScrollBars.Vertical, WordWrap = true,
         Dock = DockStyle.Fill, Font = new Font("Microsoft YaHei", 10f),
     };
     private readonly Label _lblStatus = new() { AutoSize = true, Padding = new Padding(4, 8, 4, 4) };
-    private readonly ComboBox _cbArticle = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 380 };
     private readonly NumericUpDown _nudMaxChars = Ui.Num(1, 500, 20, 60);
     private readonly NumericUpDown _nudTailDelay = Ui.Num(0, 5000, 0, 70);
     private readonly CheckBox _cbPunct = new() { Text = "标点顶屏", Checked = true, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
     private readonly TextBox _tbCommit = new() { Text = "_", Width = 50 };
 
     private CodeTable _code = new();
-    private bool _loadingArticleList;   // 填充下拉框时抑制 SelectedIndexChanged
+    private bool _loadingList;          // 填充下拉框时抑制 SelectedIndexChanged
 
     private CorpusSettings _settings;
 
@@ -143,17 +144,26 @@ internal sealed class CorpusPanel : UserControl
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // 文章编辑
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));    // 状态
 
-        // 行 1：码表（定死文件夹，自动加载合并，无需选择）
+        // 行 1：码表（data\码表\ 下拉选择，选中即载入）
         var rowCode = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 40),
         };
         rowCode.Controls.AddRange(new Control[]
         {
-            Ui.Lbl("码表(自动):"), _lblCodeStatus,
-            Ui.Btn("重新加载", (_, _) => ReloadCodes()),
+            Ui.Lbl("码表(data\\码表):"), _cbCode, _lblCodeStatus,
+            Ui.Btn("重新加载", (_, _) => ReloadCodeList(_cbCode.SelectedItem as string)),
             Ui.Btn("生成示例码表", (_, _) => NewSampleCode()),
         });
+        _cbCode.SelectedIndexChanged += (_, _) =>
+        {
+            if (_loadingList) return;
+            if (_cbCode.SelectedItem is string file)
+            {
+                LoadCodeFile(Path.Combine(CodeDir, file));
+                SaveSettings();
+            }
+        };
 
         // 行 2：编译选项
         var rowOpt = new FlowLayoutPanel
@@ -184,7 +194,7 @@ internal sealed class CorpusPanel : UserControl
         });
         _cbArticle.SelectedIndexChanged += (_, _) =>
         {
-            if (_loadingArticleList) return;
+            if (_loadingList) return;
             if (_cbArticle.SelectedItem is string file)
             {
                 LoadArticleFile(Path.Combine(ArticleDir, file));
@@ -217,31 +227,58 @@ internal sealed class CorpusPanel : UserControl
         _tbCommit.Text = string.IsNullOrEmpty(_settings.CommitKeys) ? "_" : _settings.CommitKeys;
         _cbPunct.Checked = _settings.PunctCommits;
 
-        ReloadCodes();
+        ReloadCodeList(_settings.Code);
         RefreshArticleList(_settings.Article);
     }
 
-    /// <summary>扫描码表文件夹并合并所有 .txt。</summary>
-    public void ReloadCodes()
+    /// <summary>刷新码表下拉框；尽量恢复上次选中的码表。</summary>
+    public void ReloadCodeList(string? select = null)
     {
-        var (table, files) = CodeTable.LoadFolder(CodeDir);
-        _code = table;
-        _lblCodeStatus.Text = files.Count == 0
-            ? $"（{CodeDir} 里没有 .txt 码表——点「生成示例码表」试试）"
-            : $"{files.Count} 个文件，共 {_code.Count} 字，多音字 {_code.AmbiguousCount} 个（取首码）";
+        _loadingList = true;
+        try
+        {
+            _cbCode.Items.Clear();
+            var files = Directory.Exists(CodeDir)
+                ? Directory.GetFiles(CodeDir, "*.txt").Select(Path.GetFileName).OrderBy(f => f, StringComparer.OrdinalIgnoreCase).ToList()
+                : new List<string?>();
+            foreach (var f in files) _cbCode.Items.Add(f);
+
+            string want = select ?? _settings.Code;
+            int idx = want.Length == 0 ? -1 : _cbCode.Items.IndexOf(want);
+            _cbCode.SelectedIndex = idx >= 0 ? idx : (files.Count > 0 ? 0 : -1);
+        }
+        finally { _loadingList = false; }
+
+        if (_cbCode.SelectedItem is string file)
+            LoadCodeFile(Path.Combine(CodeDir, file));
+        else
+            _lblCodeStatus.Text = $"（{CodeDir} 里没有 .txt 码表——点「生成示例码表」试试）";
+    }
+
+    private void LoadCodeFile(string path)
+    {
+        try
+        {
+            _code = CodeTable.Load(path);
+            _lblCodeStatus.Text = $"{Path.GetFileName(path)}：{_code.Count} 字，多音字 {_code.AmbiguousCount} 个（取首码）";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "码表加载失败：" + ex.Message, "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     private void NewSampleCode()
     {
         string path = Path.Combine(CodeDir, "示例码表.txt");
         File.WriteAllText(path, CodeTable.SampleText, new UTF8Encoding(false));
-        ReloadCodes();
+        ReloadCodeList(Path.GetFileName(path));
     }
 
     /// <summary>刷新文章下拉框；尽量恢复上次选中的方案。</summary>
     public void RefreshArticleList(string? select = null)
     {
-        _loadingArticleList = true;
+        _loadingList = true;
         try
         {
             _cbArticle.Items.Clear();
@@ -254,7 +291,7 @@ internal sealed class CorpusPanel : UserControl
             int idx = want.Length == 0 ? -1 : _cbArticle.Items.IndexOf(want);
             _cbArticle.SelectedIndex = idx >= 0 ? idx : (files.Count > 0 ? 0 : -1);
         }
-        finally { _loadingArticleList = false; }
+        finally { _loadingList = false; }
 
         if (_cbArticle.SelectedItem is string file)
             LoadArticleFile(Path.Combine(ArticleDir, file));
@@ -302,9 +339,10 @@ internal sealed class CorpusPanel : UserControl
         SaveSettings();
     }
 
-    /// <summary>把当前方案（文章选择 + 全部编译选项）写入 exe 文件夹。</summary>
+    /// <summary>把当前方案（码表/文章选择 + 全部编译选项）写入 exe 文件夹。</summary>
     public void SaveSettings()
     {
+        _settings.Code = _cbCode.SelectedItem as string ?? "";
         _settings.Article = _cbArticle.SelectedItem as string ?? "";
         _settings.MaxCharsPerUnit = (int)_nudMaxChars.Value;
         _settings.TailDelayMs = (int)_nudTailDelay.Value;
