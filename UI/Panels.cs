@@ -413,15 +413,25 @@ internal sealed class KeyTablePanel : UserControl
                     var row = new Row { Index = i + 1 };
                     var u = table.Units[i];
 
-                    // 编码列：带目标字符的 Key token，与期望文本逐字配对
-                    var codes = u.Tokens.Where(t => t.Target != null).Select(t => t.Keys).ToList();
-                    var texts = TextElements(table.ExpectedOf(u));
-                    int n = Math.Min(codes.Count, texts.Count);
-                    for (int k = 0; k < n; k++)
-                        row.Cols.Add((codes[k], texts[k]));
+                    // 逐 token 渲染，与按键表完全一致：
+                    //   编码 token（有目标字）→ 编码在上、字词在下
+                    //   上屏键 / 音节分隔符 / 句尾延迟 → 编码原样显示，字词行留空
+                    var elems = TextElements(table.ExpectedOf(u));
+                    int ei = 0;
+                    foreach (var t in u.Tokens)
+                    {
+                        if (t.Kind == KeyTokenKind.Key && t.Target != null)
+                        {
+                            row.Cols.Add((t.Keys, ei < elems.Count ? elems[ei++] : ""));
+                        }
+                        else
+                        {
+                            row.Cols.Add((t.Keys, ""));
+                        }
+                    }
                     // 数量对不齐时，字词照常显示，编码留空（不静默丢字）
-                    for (int k = codes.Count; k < texts.Count; k++)
-                        row.Cols.Add(("", texts[k]));
+                    for (; ei < elems.Count; ei++)
+                        row.Cols.Add(("", elems[ei]));
 
                     row.Width = 4 + row.Cols.Sum(c => ColW(c.Code, c.Text)) + 10;
                     row.Y = y;
