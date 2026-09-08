@@ -117,9 +117,6 @@ internal sealed class CorpusPanel : UserControl
 
     public event Action<KeyTable>? Compiled;
 
-    /// <summary>点「跳转到运行」时触发（主窗体切到运行页）。</summary>
-    public event Action? GoRunRequested;
-
     /// <summary>应用设置（含窗口大小记忆），供主窗体读写。</summary>
     public CorpusSettings Settings => _settings;
 
@@ -216,7 +213,6 @@ internal sealed class CorpusPanel : UserControl
             Dock = DockStyle.Fill, WrapContents = true, AutoSize = true, MinimumSize = new Size(0, 40),
         };
         rowStatus.Controls.Add(Ui.Btn("生成按键表", (_, _) => Compile()));
-        rowStatus.Controls.Add(Ui.Btn("跳转到运行", (_, _) => GoRunRequested?.Invoke()));
         rowStatus.Controls.Add(_lblStatus);
 
         root.Controls.Add(rowCode, 0, 0);
@@ -359,12 +355,23 @@ internal sealed class KeyTablePanel : UserControl
     private readonly PreviewCanvas _canvas = new();
     private readonly Label _lblInfo = new() { AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(6, 8, 6, 6) };
 
+    /// <summary>点「跳转到运行」时触发（主窗体切到运行页）。</summary>
+    public event Action? GoRunRequested;
+
     public KeyTablePanel()
     {
         Dock = DockStyle.Fill;
 
+        var buttons = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom, Height = 42, WrapContents = true, AutoSize = true,
+            MinimumSize = new Size(0, 42), Padding = new Padding(3),
+        };
+        buttons.Controls.Add(Ui.Btn("跳转到运行", (_, _) => GoRunRequested?.Invoke()));
+
         var inner = new Panel { Dock = DockStyle.Fill };
         inner.Controls.Add(_canvas);
+        inner.Controls.Add(buttons);
         inner.Controls.Add(_lblInfo);
         Controls.Add(inner);
     }
@@ -486,6 +493,8 @@ internal sealed class KeyTablePanel : UserControl
 
             var g = e.Graphics;
             g.Clear(BackColor);
+            // ClearType 消除文字锯齿（GDI+ 默认的灰度抗锯齿在小字号下发虚）
+            g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
             g.TranslateTransform(AutoScrollPosition.X, AutoScrollPosition.Y);
 
             float viewTop = -AutoScrollPosition.Y;

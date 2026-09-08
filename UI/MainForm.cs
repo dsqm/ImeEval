@@ -204,7 +204,7 @@ internal sealed class MainForm : Form
             Log($"按键表已生成：{table.UnitCount} 个上屏单元 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字");
             _tabs.SelectedIndex = 1;   // 跳到按键表页
         };
-        _corpus.GoRunRequested += () => _tabs.SelectedIndex = 2;   // 跳到运行页
+        _keyPanel.GoRunRequested += () => _tabs.SelectedIndex = 2;   // 跳到运行页
 
         _calib.StartRequested += (_, _) => _ = RunCalibAsync();
         _calib.Recommended += ms =>
