@@ -19,8 +19,11 @@ public sealed class CompileOptions
     /// <summary>根据标点断句：遇到标点结束这一句（连续的标点算同一句，如 ！？）。</summary>
     public bool SplitByPunctuation { get; set; } = true;
 
-    /// <summary>标点字符 → 按键串（如 ！ → &lt;Shift+1&gt;）。由标点配置生成，与码表分开维护。</summary>
-    public Dictionary<char, string> Punctuation { get; set; } = PunctuationConfig.Parse(PunctuationConfig.DefaultText);
+    /// <summary>
+    /// 标点串 → 按键串（如 ！ → &lt;Shift+1&gt;；…… → &lt;Shift+6&gt; 一次按键出两字）。
+    /// 表为空时标点走码表，码表也没有就当 OOV 过滤掉。
+    /// </summary>
+    public Dictionary<string, string> Punctuation { get; set; } = PunctuationConfig.Parse(PunctuationConfig.DefaultText);
 
     /// <summary>音节分隔符（双拼/五笔可能需要；全拼留空）。不上屏。</summary>
     public string SeparatorKeys { get; set; } = "";
@@ -92,10 +95,12 @@ public static class Compiler
             unitChars = 0;
         }
 
-        var si = new StringInfo(article);
-        for (int e = 0; e < si.LengthInTextElements; e++)
+        // 按字符下标遍历（兼容代理对），以便多字标点（如 …… 一次按键出两字）整体匹配
+        int i = 0;
+        while (i < article.Length)
         {
-            string elem = si.SubstringByTextElements(e, 1);
+            int elemLen = StringInfo.GetNextTextElementLength(article, i);
+            string elem = article.Substring(i, elemLen);
             char c = elem[0];
 
             if (opt.SkipNewline && (c == '\r' || c == '\n'))
@@ -103,22 +108,28 @@ public static class Compiler
                 // 标点已收尾（标点自己顶屏）就不再补上屏键；否则补句尾延迟 + 上屏键
                 CloseUnit(!pendingPunctClose);
                 pendingPunctClose = false;
+                i += elemLen;
                 continue;
             }
 
-            bool isPunct = opt.SplitByPunctuation && opt.Punctuation.ContainsKey(c);
+            // 标点配置命中（最长匹配）：表为空时不命中，该字符转走码表，码表没有就当 OOV 过滤
+            string? punct = opt.SplitByPunctuation
+                ? PunctuationConfig.MatchAt(article, i, opt.Punctuation)
+                : null;
 
             // 进入非标点字符：上一句（标点结尾）到此收尾——标点自己顶屏，不再补上屏键
-            if (!isPunct && pendingPunctClose)
+            if (punct == null && pendingPunctClose)
             {
                 CloseUnit(false);
                 pendingPunctClose = false;
             }
 
             string keys;
-            if (isPunct)
+            int consume = elemLen;
+            if (punct != null)
             {
-                keys = opt.Punctuation[c];
+                keys = opt.Punctuation[punct];
+                consume = punct.Length;      // 一次按键可能产出多个字符（…… / ——）
             }
             else if (table.TryGet(c, out var codes))
             {
@@ -128,23 +139,26 @@ public static class Compiler
             else
             {
                 res.OovSkipped++;   // 直接忽略排除，不计入期望文本（= 不计入 CER 分母）
+                i += elemLen;
                 continue;
             }
 
             // 句尾等待：只在连续标点的第一个标点之前插一次（例：...{DELAY=100}<Shift+1>）
-            if (isPunct && opt.TailDelayMs > 0 && unit.Tokens.Count > 0 && !pendingPunctClose)
+            if (punct != null && opt.TailDelayMs > 0 && unit.Tokens.Count > 0 && !pendingPunctClose)
                 unit.Tokens.Add(DelayToken(opt.TailDelayMs));
 
             if (opt.SeparatorKeys.Length > 0 && unit.Tokens.Count > 0 && unit.Tokens[^1].Kind == KeyTokenKind.Key)
                 unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Sep, Keys = opt.SeparatorKeys });
 
             unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Key, Keys = keys, Target = c });
-            expected.Append(elem);          // 整个文本元素一起入期望文本，代理对不会被拆开
-            res.CoveredChars++;
-            unitChars++;
+            string chunk = article.Substring(i, consume);
+            expected.Append(chunk);          // 整体入期望文本，代理对/多字标点不会被拆开
+            res.CoveredChars += new StringInfo(chunk).LengthInTextElements;
+            unitChars += new StringInfo(chunk).LengthInTextElements;
+            i += consume;
 
-            if (isPunct)
-                pendingPunctClose = true;   // 连续标点放同一句，等后续字符到来再收尾
+            if (punct != null)
+                pendingPunctClose = true;    // 连续标点放同一句，等后续字符到来再收尾
             else if (unitChars >= Math.Max(1, opt.MaxCharsPerUnit))
                 CloseUnit(true);            // CloseUnit 里会先插句尾等待，再插上屏键
         }

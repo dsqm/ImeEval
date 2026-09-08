@@ -73,10 +73,11 @@ internal static class Ui
             Font = new Font("Microsoft YaHei", 9f), Size = new Size(560, 540),
             MinimizeBox = false, ShowInTaskbar = false,
         };
+        // 自动换行 + 自适应高度，提示再长也不会被裁
         var lbl = new Label
         {
-            Text = prompt, Dock = DockStyle.Top, Height = 48,
-            Padding = new Padding(8, 8, 8, 2), AutoSize = false,
+            Text = prompt, Dock = DockStyle.Top, AutoSize = true,
+            MaximumSize = new Size(520, 0), Padding = new Padding(8, 8, 8, 6),
         };
         // 多行文本框只认 \r\n：先把 \n 统一换成换行，否则配置项会全挤在一行
         string text = (value ?? "").Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
@@ -163,7 +164,7 @@ internal sealed class CorpusPanel : UserControl
     private readonly TextBox _tbCommit = new() { Text = "_", Width = 50 };
 
     private CodeTable _code = new();
-    private Dictionary<char, string> _punct = new();   // 标点按键配置
+    private Dictionary<string, string> _punct = new();   // 标点按键配置
     private string _punctText = "";                    // 标点配置的原始文本（落盘用）
     private bool _loadingList;          // 填充下拉框时抑制 SelectedIndexChanged
 
