@@ -7,7 +7,7 @@ namespace ImeBench.Core;
 public enum StopSource
 {
     None,
-    HotKey,      // 全局热键 Ctrl+Alt+S
+    HotKey,      // 全局热键 F9
     StopButton,  // 界面停止按钮
     LostFocus,   // 主窗口失去焦点
 }

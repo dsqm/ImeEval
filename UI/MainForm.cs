@@ -8,8 +8,8 @@ namespace ImeBench.UI;
 internal sealed class MainForm : Form
 {
     private const int HOTKEY_ID = 0x494D;                       // 'IM'
-    private const uint HOTKEY_MOD = MOD_CONTROL | MOD_ALT | MOD_NOREPEAT;
-    private const ushort HOTKEY_VK = 0x53;                      // S
+    private const uint HOTKEY_MOD = MOD_NOREPEAT;               // F9：无修饰键
+    private const ushort HOTKEY_VK = 0x78;                      // VK_F9
 
     // 便携化：所有运行时数据都放 exe 文件夹的 data\ 下（不碰注册表 / 用户目录）
     private static readonly string AppDir = CorpusPanel.DataDir;
@@ -69,7 +69,7 @@ internal sealed class MainForm : Form
         Padding = new Padding(10, 0, 0, 0),
     };
     private readonly Button _btnStart = Ui.Btn("▶ 开始", (_, _) => { });
-    private readonly Button _btnStop = Ui.Btn("■ 停止", (_, _) => { });
+    private readonly Button _btnStop = Ui.Btn("■ 停止 (F9)", (_, _) => { });
     private readonly Button _btnResume = Ui.Btn("↻ 从断点继续", (_, _) => { });
 
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 500 };
@@ -194,9 +194,11 @@ internal sealed class MainForm : Form
             _runResults.Clear();
             _rtResult.Clear();
             Log($"按键表已生成：{table.UnitCount} 个上屏单元 / {table.TotalKeys} 个按键 / 期望 {table.ExpectedText.Length} 字");
-            _tabs.SelectedIndex = 1;   // 跳到按键表页
+            _tabs.SelectedIndex = 2;   // 生成后直接落运行页——三击流程的最后一跳（预览在按键表页仍可回看）
         };
+        _keyPanel.GenerateRequested += () => _corpus.Compile();   // 按键表页的「生成按键表」复用语料页编译
         _keyPanel.GoRunRequested += () => _tabs.SelectedIndex = 2;   // 跳到运行页
+        _corpus.GoRunRequested += () => _tabs.SelectedIndex = 1;   // 语料页跳到按键表页
 
         _calib.StartRequested += (_, _) => _ = RunCalibAsync();
         _calib.Recommended += ms =>
