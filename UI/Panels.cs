@@ -90,18 +90,18 @@ internal static class Ui
         };
         var btns = new FlowLayoutPanel
         {
-            Dock = DockStyle.Bottom, Height = 48, WrapContents = false, AutoSize = false,
-            FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 8, 8, 8),
+            Dock = DockStyle.Bottom, Height = 58, WrapContents = false, AutoSize = false,
+            FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(0, 10, 8, 10),
         };
         var ok = new Button
         {
             Text = "确定", DialogResult = DialogResult.OK,
-            Width = 96, Height = 30, AutoSize = false, Margin = new Padding(6, 0, 0, 0),
+            Width = 96, Height = 38, AutoSize = false, Margin = new Padding(6, 0, 0, 0),
         };
         var cancel = new Button
         {
             Text = "取消", DialogResult = DialogResult.Cancel,
-            Width = 96, Height = 30, AutoSize = false, Margin = new Padding(6, 0, 0, 0),
+            Width = 96, Height = 38, AutoSize = false, Margin = new Padding(6, 0, 0, 0),
         };
         btns.Controls.Add(ok);
         btns.Controls.Add(cancel);
@@ -117,6 +117,7 @@ internal static class Ui
             };
             reset.Click += (_, _) =>
                 tb.Text = (resetText ?? "").Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
+            reset.Height = 38;
             btns.Controls.Add(reset);
         }
         form.AcceptButton = ok;
@@ -410,8 +411,15 @@ internal sealed class CorpusPanel : UserControl
     private void EditPunctuation()
     {
         string? text = Ui.ShowMulti(this, "设置标点按键",
-            "每行一条：标点字符 + 空格或制表符 + 按键串（# 开头为注释）\n" +
-            "例：。 .     ！ <Shift+1>     _ = 空格     {DELAY=100} = 等待",
+            "每行一条：标点 + 空格 + 按键串（# 开头为注释）\r\n" +
+            "\r\n" +
+            "例：\r\n" +
+            "。      .                 ← 句号就是句号键\r\n" +
+            "！      <Shift+1>        ← 组合键：按住 Shift 敲 1\r\n" +
+            "……     <Shift+6>        ← 一次按键出两字，左列照实写全\r\n" +
+            "\r\n" +
+            "按键串里 _ 表示空格；{DELAY=100} 表示先等 100ms。\r\n" +
+            "「重置」恢复内置默认；改完点「确定」保存。",
             _punctText,
             resetText: PunctuationConfig.DefaultText);
         if (text == null) return;
