@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 /// <summary>
 /// 按键节拍器：把"每个按键之间的间隔"控制在毫秒甚至亚毫秒级。

@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace ImeBench.Win32;
+namespace ImeEval.Win32;
 
 /// <summary>
 /// Win32 / IMM32 P/Invoke 声明。

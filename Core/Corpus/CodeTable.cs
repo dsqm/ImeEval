@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 /// <summary>
 /// 码表：文本元素（单字 / 词组）→ 真实输入键。

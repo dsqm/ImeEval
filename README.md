@@ -1,4 +1,4 @@
-# ImeBench — 输入法整句正确度评测
+# ImeEval — 输入法整句正确度评测
 
 用模拟键盘测试闭源中文输入法（微软拼音 / 搜狗 / 百度等）的**整句转换正确率**。
 
@@ -111,7 +111,7 @@
 程序产生的所有数据都在 **exe 文件夹**下，不写注册表、不写 C 盘用户目录：
 
 ```
-ImeBench.exe
+ImeEval.exe
 码表\                码表 .txt（下拉框选中即载入）
 文章\                测试文章 .txt（语料页下拉框选中即载入）
 data\
@@ -152,14 +152,14 @@ data\
 ## 命令行
 
 ```
-ImeBench.exe                          正常启动 GUI
-ImeBench.exe --smoke <码表> <文章> [间隔ms]
+ImeEval.exe                          正常启动 GUI
+ImeEval.exe --smoke <码表> <文章> [间隔ms]
                                       无人值守：编译→标定(省略间隔时)→跑完
                                       完整日志写入 exe 文件夹 data\smoke.log
-ImeBench.exe --compile <码表> <文章> [句尾延迟ms]
+ImeEval.exe --compile <码表> <文章> [句尾延迟ms]
                                       只做切分并打印每句按键串（无 UI、不碰焦点），
                                       用于后台调试语料切分
-ImeBench.exe --poc                    打开底层技术验证窗口（排查问题时用）
+ImeEval.exe --poc                    打开底层技术验证窗口（排查问题时用）
 ```
 
 ## 常见问题
@@ -192,7 +192,7 @@ UI (UI/)                     界面、热键注册、失焦消息的入口
 ## 目录结构
 
 ```
-ImeBench/
+ImeEval/
 ├── samples/            示例码表与文章
 ├── Win32/              SendInput / 宿主控件 / Win32 封装
 ├── Core/

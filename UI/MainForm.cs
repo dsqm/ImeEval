@@ -1,9 +1,9 @@
 using System.ComponentModel;
-using ImeBench.Core;
-using ImeBench.Win32;
-using static ImeBench.Win32.Native;
+using ImeEval.Core;
+using ImeEval.Win32;
+using static ImeEval.Win32.Native;
 
-namespace ImeBench.UI;
+namespace ImeEval.UI;
 
 internal sealed class MainForm : Form
 {
@@ -77,7 +77,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "ImeBench — 输入法整句正确度评测";
+        Text = "ImeEval — 输入法整句正确度评测";
         StartPosition = FormStartPosition.CenterScreen;
         Size = new Size(1080, 780);
         Font = new Font("Microsoft YaHei", 9f);
@@ -373,7 +373,7 @@ internal sealed class MainForm : Form
     }
 
     // ──────────────────── 无人值守端到端烟测 ────────────────────
-    // 用法：ImeBench.exe --smoke <码表> <文章> [间隔ms]
+    // 用法：ImeEval.exe --smoke <码表> <文章> [间隔ms]
     // 省略间隔时先自动标定再跑。完整日志落盘 data\smoke.log
 
     public async Task<int> RunSmokeAsync(string codePath, string articlePath, int? intervalMs)

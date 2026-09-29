@@ -1,4 +1,4 @@
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 /// <summary>
 /// 上屏文本捕获能力抽象。

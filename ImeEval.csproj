@@ -8,8 +8,8 @@
     <Nullable>annotations</Nullable>
     <NoWarn>CS8632</NoWarn>
     <LangVersion>latest</LangVersion>
-    <RootNamespace>ImeBench</RootNamespace>
-    <AssemblyName>ImeBench</AssemblyName>
+    <RootNamespace>ImeEval</RootNamespace>
+    <AssemblyName>ImeEval</AssemblyName>
   </PropertyGroup>
 
 </Project>

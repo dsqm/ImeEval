@@ -43,7 +43,7 @@ Write-Host "Verifying NuGet:" -ForegroundColor Cyan
 & dotnet nuget locals all --list
 
 Write-Host ""
-Write-Host "Verifying build of ImeBench:" -ForegroundColor Cyan
+Write-Host "Verifying build of ImeEval:" -ForegroundColor Cyan
 Set-Location <repo root>
 & dotnet build -v q --nologo
 

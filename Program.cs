@@ -1,8 +1,8 @@
-using ImeBench.Core;
-using ImeBench.Poc;
-using ImeBench.UI;
+using ImeEval.Core;
+using ImeEval.Poc;
+using ImeEval.UI;
 
-namespace ImeBench;
+namespace ImeEval;
 
 internal static class Program
 {
@@ -27,7 +27,7 @@ internal static class Program
         }
 
         // --poc 打开 M0 技术验证窗口（保留，排查输入法行为差异时用）
-        // 例：ImeBench.exe --poc --auto
+        // 例：ImeEval.exe --poc --auto
         if (args.Any(a => a.Equals("--poc", StringComparison.OrdinalIgnoreCase)))
         {
             bool auto = args.Any(a => a.Equals("--auto", StringComparison.OrdinalIgnoreCase));

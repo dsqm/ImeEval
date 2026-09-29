@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using ImeBench.Win32;
-using static ImeBench.Win32.Native;
+using ImeEval.Win32;
+using static ImeEval.Win32.Native;
 
-namespace ImeBench.Poc;
+namespace ImeEval.Poc;
 
 /// <summary>
 /// M0 技术验证窗口。
@@ -38,7 +38,7 @@ public sealed class PocForm : Form
     public PocForm(bool auto = false)
     {
         _auto = auto;
-        Text = "ImeBench - M0 技术验证 POC";
+        Text = "ImeEval - M0 技术验证 POC";
         Size = new Size(1040, 780);
         StartPosition = FormStartPosition.CenterScreen;
 
@@ -218,7 +218,7 @@ public sealed class PocForm : Form
         try
         {
             File.WriteAllText(LogFilePath,
-                $"=== ImeBench M0 POC started {DateTime.Now:yyyy-MM-dd HH:mm:ss} (auto={_auto}) ==={Environment.NewLine}");
+                $"=== ImeEval M0 POC started {DateTime.Now:yyyy-MM-dd HH:mm:ss} (auto={_auto}) ==={Environment.NewLine}");
         }
         catch { }
     }

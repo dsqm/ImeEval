@@ -1,7 +1,7 @@
-using ImeBench.Win32;
-using static ImeBench.Win32.Native;
+using ImeEval.Win32;
+using static ImeEval.Win32.Native;
 
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 /// <summary>停止来源。记录"谁喊停的"，便于事后判断这批数据是否被中断过。</summary>
 public enum StopSource

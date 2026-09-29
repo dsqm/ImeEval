@@ -1,4 +1,4 @@
-# .NET / NuGet environment diagnostics for ImeBench
+# .NET / NuGet environment diagnostics for ImeEval
 # Run:  powershell -NoProfile -ExecutionPolicy Bypass -File check-env.ps1
 # Output: console + env-check.log (next to this script)
 
@@ -24,7 +24,7 @@ function Run($title, $exe, $args) {
     return $code
 }
 
-"=== ImeBench .NET env check  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" | Set-Content -Path $logFile
+"=== ImeEval .NET env check  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') ===" | Set-Content -Path $logFile
 Log "Machine : $env:COMPUTERNAME"
 Log "User    : $env:USERDOMAIN\$env:USERNAME"
 Log "Root    : $root"
@@ -77,17 +77,17 @@ if ($minCode -ne 0) {
     Log ">>>             Fix: run  dotnet build-server shutdown  then retry."
 }
 
-# ---------- 6. ImeBench itself ----------
+# ---------- 6. ImeEval itself ----------
 Set-Location $root
 Log ""
 Log "=================================================="
-Log "  6. ImeBench project"
+Log "  6. ImeEval project"
 Log "=================================================="
 Log "cwd = $root"
-$benchCode = Run "6. dotnet build (ImeBench, net10.0-windows)" "dotnet" @("build","-v","q","--nologo")
+$benchCode = Run "6. dotnet build (ImeEval, net10.0-windows)" "dotnet" @("build","-v","q","--nologo")
 
 if ($benchCode -ne 0) {
-    Log ">>> ImeBench build FAILED. Trying with explicit package path..."
+    Log ">>> ImeEval build FAILED. Trying with explicit package path..."
     $env:NUGET_PACKAGES = Join-Path $env:USERPROFILE '.nuget\packages'
     Run "6b. dotnet build with NUGET_PACKAGES set" "dotnet" @("build","-v","q","--nologo")
 }
@@ -106,7 +106,7 @@ if ($nugetCode -eq 0) {
     Log "         or run   dotnet-core-uninstall   and reinstall from https://dot.net/download"
 }
 if ($minCode -eq 0)   { Log "  [OK]   Minimal project builds." }   else { Log "  [FAIL] Minimal project does NOT build." }
-if ($benchCode -eq 0) { Log "  [OK]   ImeBench builds." }          else { Log "  [FAIL] ImeBench does NOT build." }
+if ($benchCode -eq 0) { Log "  [OK]   ImeEval builds." }          else { Log "  [FAIL] ImeEval does NOT build." }
 
 Log ""
 Log "Full log: $logFile"

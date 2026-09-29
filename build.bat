@@ -1,6 +1,6 @@
 @echo off
 rem ===============================================
-rem ImeBench 一键编译：成功自动关窗，失败保留窗口
+rem ImeEval 一键编译：成功自动关窗，失败保留窗口
 rem ===============================================
 chcp 65001 >nul
 cd /d "%~dp0"
@@ -20,18 +20,18 @@ if not defined ProgramFiles set "ProgramFiles=%SystemDrive%\Program Files"
 if not defined CommonProgramFiles set "CommonProgramFiles=%ProgramFiles%\Common Files"
 if not defined PUBLIC set "PUBLIC=%SystemDrive%\Users\Public"
 
-rem ── ImeBench.exe 正在运行会锁住文件导致编译失败，提前拦截 ──
-%SystemRoot%\System32\tasklist.exe /FI "IMAGENAME eq ImeBench.exe" 2>nul | %SystemRoot%\System32\find.exe /I "ImeBench.exe" >nul
+rem ── ImeEval.exe 正在运行会锁住文件导致编译失败，提前拦截 ──
+%SystemRoot%\System32\tasklist.exe /FI "IMAGENAME eq ImeEval.exe" 2>nul | %SystemRoot%\System32\find.exe /I "ImeEval.exe" >nul
 if not errorlevel 1 (
     echo.
-    echo [错误] 检测到 ImeBench.exe 正在运行，请先关闭程序窗口再编译。
+    echo [错误] 检测到 ImeEval.exe 正在运行，请先关闭程序窗口再编译。
     echo.
     pause
     exit /b 1
 )
 
 echo.
-echo ======== ImeBench 编译中... ========
+echo ======== ImeEval 编译中... ========
 echo.
 call dotnet build --nologo -v q
 if errorlevel 1 (

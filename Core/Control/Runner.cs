@@ -1,9 +1,9 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
-using ImeBench.Win32;
+using ImeEval.Win32;
 
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 public enum RunEndReason
 {

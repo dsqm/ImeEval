@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 /// <summary>
 /// 按键 token 的语义类型。

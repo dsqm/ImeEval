@@ -1,7 +1,7 @@
 using System.Diagnostics;
-using ImeBench.Win32;
+using ImeEval.Win32;
 
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 /// <summary>
 /// 发送按键层：把一个上屏单元的按键串逐键打出去。

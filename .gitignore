@@ -7,5 +7,5 @@ obj/
 .vs/
 .idea/
 
-# 运行时产物（检查点/报告在 %LOCALAPPDATA%\ImeBench，不在仓库里）
+# 运行时产物（检查点/报告在 %LOCALAPPDATA%\ImeEval，不在仓库里）
 *.log

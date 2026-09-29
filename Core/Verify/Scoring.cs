@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 /// <summary>编辑距离的三类细分。</summary>
 public readonly record struct EditOps(int Sub, int Del, int Ins)

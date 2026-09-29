@@ -1,4 +1,4 @@
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 /// <summary>
 /// 标点输入键配置：标点串 → 按键串。

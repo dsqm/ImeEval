@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices;
-using static ImeBench.Win32.Native;
+using static ImeEval.Win32.Native;
 
-namespace ImeBench.Win32;
+namespace ImeEval.Win32;
 
 public enum SendStatus
 {

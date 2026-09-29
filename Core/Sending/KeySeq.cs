@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace ImeBench.Core;
+namespace ImeEval.Core;
 
 /// <summary>按键串条目：一个按键、一个原样字符，或一段延迟。</summary>
 public sealed class KeySeqItem

@@ -1,7 +1,7 @@
 using System.Globalization;
-using ImeBench.Core;
+using ImeEval.Core;
 
-namespace ImeBench.UI;
+namespace ImeEval.UI;
 
 internal static class Ui
 {
@@ -268,7 +268,7 @@ internal sealed class CorpusPanel : UserControl
             Ui.Btn("打开文章文件夹", (_, _) =>
             {
                 try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = ArticleDir, UseShellExecute = true }); }
-                catch (Exception ex) { MessageBox.Show(this, "打开失败：" + ex.Message, "ImeBench"); }
+                catch (Exception ex) { MessageBox.Show(this, "打开失败：" + ex.Message, "ImeEval"); }
             }),
         });
         _cbArticle.SelectedIndexChanged += (_, _) =>
@@ -348,7 +348,7 @@ internal sealed class CorpusPanel : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "码表加载失败：" + ex.Message, "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "码表加载失败：" + ex.Message, "ImeEval", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -377,7 +377,7 @@ internal sealed class CorpusPanel : UserControl
     private void LoadArticleFile(string path)
     {
         try { _tbArticle.Text = File.ReadAllText(path); }
-        catch (Exception ex) { MessageBox.Show(this, "文章读取失败：" + ex.Message, "ImeBench"); }
+        catch (Exception ex) { MessageBox.Show(this, "文章读取失败：" + ex.Message, "ImeEval"); }
     }
 
     /// <summary>直接加载一个码表文件（--smoke 无人值守用）。</summary>
@@ -390,7 +390,7 @@ internal sealed class CorpusPanel : UserControl
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "码表加载失败：" + ex.Message, "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, "码表加载失败：" + ex.Message, "ImeEval", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -401,12 +401,12 @@ internal sealed class CorpusPanel : UserControl
         string article = _tbArticle.Text;
         if (article.Length == 0)
         {
-            MessageBox.Show(this, "请先选择或粘贴测试文章。", "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "请先选择或粘贴测试文章。", "ImeEval", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         if (_code.Count == 0)
         {
-            MessageBox.Show(this, "码表为空——请把码表 .txt 放进 exe 旁的「\\码表」文件夹后点「重新加载」。", "ImeBench", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "码表为空——请把码表 .txt 放进 exe 旁的「\\码表」文件夹后点「重新加载」。", "ImeEval", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 

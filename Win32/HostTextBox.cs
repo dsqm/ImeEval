@@ -1,11 +1,11 @@
-using ImeBench.Core;
+using ImeEval.Core;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-using static ImeBench.Win32.Native;
+using static ImeEval.Win32.Native;
 
-namespace ImeBench.Win32;
+namespace ImeEval.Win32;
 
 /// <summary>
 /// 内嵌文本宿主：RichTextBox（msftedit）子类，负责捕获 IME 消息与文本变化。
