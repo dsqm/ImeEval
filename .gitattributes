@@ -1,0 +1,2 @@
+*.bat text working-tree-encoding=GBK eol=crlf
+*.cmd text working-tree-encoding=GBK eol=crlf
