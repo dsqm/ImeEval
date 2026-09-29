@@ -10,6 +10,7 @@ public enum RunEndReason
     Completed,
     StoppedByUser,
     LostFocus,
+    FocusLost,      // 焦点不在宿主（如切换了页签）——与主窗口失焦区分
     SendFailed,
     EmptyTable,
 }
@@ -57,6 +58,7 @@ public sealed class RunResult
         RunEndReason.Completed => "全部完成",
         RunEndReason.StoppedByUser => "用户停止（热键/按钮）",
         RunEndReason.LostFocus => "主窗口失去焦点，已停止",
+        RunEndReason.FocusLost => "键盘焦点不在宿主（可能切换了页签），已停止",
         RunEndReason.SendFailed => "SendInput 失败",
         _ => "按键表为空",
     };
@@ -146,6 +148,9 @@ public sealed class Runner
     /// <summary>本轮检测到高置信度自动上屏而跳过上屏键的句数。</summary>
     public int AutoCommitSkips => _player.AutoCommitSkips;
 
+    /// <summary>本轮检测到 IME 被切到关闭（英文）状态并已自动重开的次数。</summary>
+    public int ImeReopens { get; private set; }
+
     private int _commitStart;
 
     /// <summary>当前句已发生的 IME 提交次数（供 UI 高频刷新，实时显示上屏进度）。</summary>
@@ -176,6 +181,16 @@ public sealed class Runner
             _commitStart = _verify.SnapshotCommitEvents();      // 本句开始时的 IME 提交计数
             pacer.Reset();
             sw.Restart();
+
+            // 每句发送前闸门：IME 被切走则重开；焦点不在宿主（如切了页签——主窗口
+            // 仍是前台，AllowSend 拦不住）直接停，绝不把按键盲发进别的控件。
+            if (_verify.EnsureImeReady()) ImeReopens++;
+            _verify.Focus();
+            if (!_verify.IsFocused())
+            {
+                reason = RunEndReason.FocusLost;
+                break;
+            }
 
             string expected = table.ExpectedOf(unit);
 

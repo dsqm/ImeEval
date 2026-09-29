@@ -1,5 +1,6 @@
 using System.Globalization;
 using ImeEval.Core;
+using ImeEval.Win32;
 
 namespace ImeEval.UI;
 
@@ -673,11 +674,12 @@ internal sealed class KeyTablePanel : UserControl
 
 // ─────────────────────────────────────────────────────────────
 // 标定面板：现场测出这台机器 + 这个输入法的最快稳定间隔
+// 标定全程在本页进行：本页有自己的输入宿主，开始后不切页、焦点不离开本页
 // ─────────────────────────────────────────────────────────────
 internal sealed class CalibPanel : UserControl
 {
-    private readonly TextBox _tbKeys = new() { Text = "vsgo_", Width = 160 };
-    private readonly TextBox _tbExpect = new() { Text = "中国", Width = 90 };
+    private readonly TextBox _tbKeys = new() { Text = "mwlidevsgo_", Width = 160 };
+    private readonly TextBox _tbExpect = new() { Text = "美丽的中国", Width = 110 };
     private readonly NumericUpDown _nudRepeats = Ui.Num(3, 200, 20);
     private readonly NumericUpDown _nudMargin = Ui.Num(0, 20, 1);
     private readonly TextBox _tbLog = new()
@@ -686,14 +688,26 @@ internal sealed class CalibPanel : UserControl
         Font = new Font("Consolas", 9.5f), WordWrap = false,
     };
     private readonly Label _lblResult = new() { AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(6, 8, 6, 6), Font = new Font("Microsoft YaHei", 10f, FontStyle.Bold) };
+    private readonly Button _btnStart = Ui.Btn("开始标定", (_, _) => { });
+    private readonly Button _btnStop = Ui.Btn("■ 停止 (F9)", (_, _) => { });
+    private GroupBox _hostGroup = null!;
+
+    /// <summary>标定专属输入宿主（由主窗体注入）。放本页内，标定时按键就发到这里。</summary>
+    public ImeHost Host { get; private set; } = null!;
 
     public event Action<int>? Recommended;
+    public event EventHandler? StartRequested;
+    public event EventHandler? StopRequested;
 
     public int MarginMs => (int)_nudMargin.Value;
 
     public CalibPanel()
     {
         Dock = DockStyle.Fill;
+
+        _btnStart.Click += (_, _) => StartRequested?.Invoke(this, EventArgs.Empty);
+        _btnStop.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
+        _btnStop.Enabled = false;
 
         var top = new FlowLayoutPanel
         {
@@ -708,19 +722,48 @@ internal sealed class CalibPanel : UserControl
             Ui.Lbl("容错+ms:"), _nudMargin,
         });
 
+        // 本页输入宿主：标定按键发到这里，用户能全程看着 IME 组字/上屏
+        var hostGroup = new GroupBox
+        {
+            Text = "输入宿主（标定按键发到这里，期间请勿切换窗口）",
+            Dock = DockStyle.Top, Height = 96, Padding = new Padding(6),
+        };
+        _hostGroup = hostGroup;
+
         var inner = new Panel { Dock = DockStyle.Fill, Padding = new Padding(6) };
         inner.Controls.Add(_tbLog);
         inner.Controls.Add(_lblResult);
 
-        var bottom = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 38, WrapContents = false, Padding = new Padding(3) };
-        bottom.Controls.Add(Ui.Btn("开始标定", (_, _) => StartRequested?.Invoke(this, EventArgs.Empty)));
+        var bottom = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom, WrapContents = false,
+            AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,   // 自适应高度：写死 38 会把按钮下缘裁掉
+            Padding = new Padding(3),
+        };
+        bottom.Controls.Add(_btnStart);
+        bottom.Controls.Add(_btnStop);
 
+        // 停靠按「后加先停」处理：top 最后加 → 最顶；inner 最先加 → 占剩余空间
         Controls.Add(inner);
+        Controls.Add(hostGroup);
         Controls.Add(bottom);
         Controls.Add(top);
     }
 
-    public event EventHandler? StartRequested;
+    /// <summary>主窗体把标定专属宿主挂进本页（必须在句柄创建前完成布局）。</summary>
+    public void AttachHost(ImeHost host)
+    {
+        Host = host;
+        _hostGroup.Controls.Add(host);
+    }
+
+    /// <summary>标定运行状态同步到按钮：进行中禁用「开始标定」、亮出「停止」。</summary>
+    public void SetRunning(bool running)
+    {
+        if (InvokeRequired) { BeginInvoke(new Action<bool>(SetRunning), running); return; }
+        _btnStart.Enabled = !running;
+        _btnStop.Enabled = running;
+    }
 
     public CalibOptions CurrentOptions => new()
     {
@@ -743,6 +786,14 @@ internal sealed class CalibPanel : UserControl
     {
         if (InvokeRequired) { BeginInvoke(new Action<string>(Append), line); return; }
         _tbLog.AppendText(line + Environment.NewLine);
+    }
+
+    /// <summary>实时进度（每组刷新一次，写在结果栏位置，跑完被最终结果覆盖）。</summary>
+    public void ShowProgress(string text)
+    {
+        if (InvokeRequired) { BeginInvoke(new Action<string>(ShowProgress), text); return; }
+        _lblResult.Text = text;
+        _lblResult.ForeColor = Color.DarkSlateBlue;
     }
 
     public void ClearLog() => _tbLog.Clear();

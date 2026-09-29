@@ -16,6 +16,12 @@ public interface IUpTextSink
     /// <summary>线程安全地夺回键盘焦点。</summary>
     void FocusSafe();
 
+    /// <summary>线程安全读取焦点是否在本宿主上。</summary>
+    bool IsFocusedSafe();
+
+    /// <summary>确保 IME 处于打开（中文）状态，被切走则重开。返回 true = 执行了重开。</summary>
+    bool EnsureImeReadySafe();
+
     /// <summary>IME 提交事件计数快照（GCS_RESULTSTR 累计次数，线程安全）。</summary>
     int SnapshotCommitEvents();
 
@@ -48,6 +54,12 @@ public sealed class Verifier
 
     /// <summary>夺回焦点，保证后续按键确实打给宿主。</summary>
     public void Focus() => _sink.FocusSafe();
+
+    /// <summary>焦点是否真实落在本宿主上（切换页签/误点其他控件会丢）。</summary>
+    public bool IsFocused() => _sink.IsFocusedSafe();
+
+    /// <summary>确保 IME 打开（中文），被切走则重开。返回 true = 执行了重开。</summary>
+    public bool EnsureImeReady() => _sink.EnsureImeReadySafe();
 
     /// <summary>捕获本次上屏的文本。</summary>
     public string Capture(int settleMs, int maxMs, Func<bool>? stop)

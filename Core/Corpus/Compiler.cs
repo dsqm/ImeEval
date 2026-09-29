@@ -255,8 +255,8 @@ public sealed class CorpusSettings
     public bool OnlyErrors { get; set; } = true;
 
     // 标定页参数
-    public string CalibKeys { get; set; } = "vsgo_";
-    public string CalibExpect { get; set; } = "中国";
+    public string CalibKeys { get; set; } = "mwlidevsgo_";
+    public string CalibExpect { get; set; } = "美丽的中国";
     public int CalibRepeats { get; set; } = 20;
     public int CalibMargin { get; set; } = 1;
 

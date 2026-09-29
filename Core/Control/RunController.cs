@@ -30,13 +30,19 @@ public sealed class RunController
     /// <summary>主窗口句柄，用于前台校验。为 Zero 时跳过该项校验。</summary>
     public IntPtr MainHwnd { get; set; }
 
+    /// <summary>
+    /// 失焦暂停模式：前台被抢时只拦发不置停，由调用方（标定）等待回归后重发。
+    /// 运行页保持默认 false——失焦即停。
+    /// </summary>
+    public bool PauseOnBlur { get; set; }
+
     public bool StopRequested => _stopRequested;
 
     public StopSource Source => _source;
 
     public string SourceText => _source switch
     {
-        StopSource.HotKey => "热键 Ctrl+Alt+S",
+        StopSource.HotKey => "热键 F9",
         StopSource.StopButton => "停止按钮",
         StopSource.LostFocus => "主窗口失去焦点",
         _ => "无",
@@ -63,7 +69,8 @@ public sealed class RunController
 
         if (MainHwnd != IntPtr.Zero && GetForegroundWindow() != MainHwnd)
         {
-            RequestStop(StopSource.LostFocus);
+            // 暂停模式下只拦发，由调用方等待前台/焦点回归；否则失焦即停
+            if (!PauseOnBlur) RequestStop(StopSource.LostFocus);
             return false;
         }
         return true;

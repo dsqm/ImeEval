@@ -31,6 +31,19 @@ internal sealed class MainForm : Form
         HideSelection = false,
     };
 
+    private readonly ImeHost _calibHost = new()
+    {
+        Dock = DockStyle.Fill,
+        Font = new Font("Microsoft YaHei", 12f),
+        BorderStyle = BorderStyle.FixedSingle,
+        BackColor = Color.White,
+        // 同运行页宿主：必须显式打开 IME，否则拼音被当普通字符直接插入
+        ImeMode = ImeMode.On,
+        DetectUrls = false,
+        AutoWordSelection = false,
+        HideSelection = false,
+    };
+
     private readonly InputSender _sender = new();
     private readonly RunController _ctrl = new();
     private Runner? _runner;
@@ -71,9 +84,10 @@ internal sealed class MainForm : Form
     private readonly Button _btnStop = Ui.Btn("■ 停止 (F9)", (_, _) => { });
     private readonly Button _btnResume = Ui.Btn("↻ 从断点继续", (_, _) => { });
 
-    private readonly System.Windows.Forms.Timer _timer = new() { Interval = 500 };
+    private System.Windows.Forms.Timer _timer = new() { Interval = 500 };
     private TabControl _tabs = null!;
-    private TabPage _pageRun = null!;   // 宿主所在的页——隐藏的页签里控件拿不到键盘焦点
+    private TabPage _pageRun = null!;       // 宿主所在的页——隐藏的页签里控件拿不到键盘焦点
+    private TabPage _pageCalib = null!;     // 标定宿主所在的页——标定全程在本页进行
 
     public MainForm()
     {
@@ -121,6 +135,8 @@ internal sealed class MainForm : Form
 
         var pageCalib = new TabPage("速度标定") { Padding = new Padding(6) };
         pageCalib.Controls.Add(_calib);
+        _calib.AttachHost(_calibHost);      // 标定专属宿主挂进本页：开始标定后不切页、焦点不出本页
+        _pageCalib = pageCalib;
 
         // 页签顺序按使用流程：语料 → 按键表 → 运行 → 速度标定
         tabs.TabPages.AddRange(new[] { pageCorpus, pageKeys, pageRun, pageCalib });
@@ -195,6 +211,7 @@ internal sealed class MainForm : Form
         _keyPanel.GoRunRequested += () => _tabs.SelectedIndex = 2;   // 跳到运行页
 
         _calib.StartRequested += (_, _) => _ = RunCalibAsync();
+        _calib.StopRequested += (_, _) => StopRun("用户点击停止");
         _calib.Recommended += ms =>
         {
             _nudInterval.Value = Math.Min(_nudInterval.Maximum, ms);
@@ -213,7 +230,7 @@ internal sealed class MainForm : Form
         _rtResult.Clear();
         _running = true;
         UpdateButtons();
-        if (!await EnsureHostReadyAsync())
+        if (!await EnsureHostReadyAsync(_host))
             Log("警告：抢不到前台窗口。请把本窗口点到最前面再开始，否则按键会发给别的程序。");
         await Task.Delay(300);   // 让焦点稳定，否则前几个键会发给别的控件
 
@@ -240,6 +257,8 @@ internal sealed class MainForm : Form
             Log("按键串警告：" + e);
         if (_runner.AutoCommitSkips > 0)
             Log($"其中 {_runner.AutoCommitSkips} 句检测到高置信度自动上屏，已跳过上屏键（按键表页句尾标绿⏎）。");
+        if (_runner.ImeReopens > 0)
+            Log($"期间检测到 IME 被切到英文/关闭状态 {_runner.ImeReopens} 次，均已自动重新打开——若频繁出现请检查是否有软件在切换输入法。");
         Log(res.Stats.Summary());
         _lblStats.Text = FormatSummary(res.Stats.Summary());
     }
@@ -352,24 +371,37 @@ internal sealed class MainForm : Form
         _running = true;
         UpdateButtons();
         _ctrl.Reset();          // 清掉上一轮遗留的停止标志，否则闸门会直接拦死标定
+        _ctrl.PauseOnBlur = true;   // 标定期间失焦/被抢前台 → 暂停等待，而不是整场停止
         _calib.ClearLog();
         _calib.Append($"标定：\"{opt.Keys}\" → 期望 \"{opt.Expect}\"，每组 {opt.Repeats} 次，命中即停");
-        if (!await EnsureHostReadyAsync())
-            _calib.Append("警告：抢不到前台窗口，标定结果不可信。请把本窗口点到最前面。");
-        await Task.Delay(300);
+        try
+        {
+            // 标定全程在本页：宿主就是标定页里那只，ActivateHost 不会切走页签
+            if (!await EnsureHostReadyAsync(_calibHost))
+                _calib.Append("警告：抢不到前台窗口，标定结果不可信。请把本窗口点到最前面。");
+            await Task.Delay(300);
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var r = await Calibrator.RunAsync(_host, _sender, _ctrl, opt,
-            step => _calib.Append(step.ToString()));
-        sw.Stop();
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var r = await Calibrator.RunAsync(_calibHost, _sender, _ctrl, opt,
+                step => { _calib.Append(step.ToString()); Log("标定档位：" + step); },
+                p =>
+                {
+                    _calib.ShowProgress(p.ToString());
+                    if (p.Note != null) Log("标定：" + p.Note);
+                });
+            sw.Stop();
 
-        _calib.Append($"耗时 {sw.Elapsed.TotalSeconds:F1}s");
-        _calib.Append("结果：" + r);
-        _calib.ShowResult(r);
-
-        _running = false;
-        UpdateButtons();
-        Log("标定结束：" + r);
+            _calib.Append($"耗时 {sw.Elapsed.TotalSeconds:F1}s");
+            _calib.Append("结果：" + r);
+            _calib.ShowResult(r);
+            Log("标定结束：" + r);
+        }
+        finally
+        {
+            _ctrl.PauseOnBlur = false;
+            _running = false;
+            UpdateButtons();
+        }
     }
 
     // ──────────────────── 无人值守端到端烟测 ────────────────────
@@ -434,13 +466,16 @@ internal sealed class MainForm : Form
     {
         _btnStart.Enabled = !_running;
         _btnStop.Enabled = _running;
+        _calib.SetRunning(_running);   // 标定页按钮与运行页联动（标定/运行共用一个停止总控）
     }
 
     private void UpdateBar()
     {
         bool structOk = InputSender.StructOk;
         bool foreground = GetForegroundWindow() == Handle;
-        bool focused = _host.Focused;
+        // 「宿主焦点」按当前页看对应的宿主：标定页看标定宿主，其余页看运行宿主
+        var activeHost = _tabs.SelectedTab == _pageCalib ? _calibHost : _host;
+        bool focused = activeHost.Focused;
 
         // 运行中每 500ms 刷新一次实时统计（含句中已发生的 IME 提交次数）
         if (_running && _runner != null)
@@ -460,18 +495,22 @@ internal sealed class MainForm : Form
     }
 
     /// <summary>
-    /// 把前台窗口与键盘焦点都抢回宿主。
+    /// 把前台窗口与键盘焦点都抢回指定宿主（运行页 / 标定页各有其一）。
     /// 只调 Control.Focus() 不够 —— 窗体不在前台时它不生效，
     /// 按键会被发到别的窗口（表现为拼音当英文直接插进去，IME 完全没参与）。
     /// </summary>
-    private bool ActivateHost()
+    private bool ActivateHost(ImeHost host)
     {
         if (!Visible || IsDisposed) return false;
 
-        // 宿主在「运行」页上：Tab页不可见时里面的控件拿不到键盘焦点，必须先切过去
-        if (_tabs.SelectedTab != _pageRun)
+        // 宿主所在页不可见时里面的控件拿不到键盘焦点，必须先切过去。
+        // 标定宿主在本页、运行宿主在运行页：谁开跑就切到谁那页，不会把标定踢去运行页。
+        // 注意用 Control.Contains（递归查全部后代）：宿主嵌在 GroupBox 里，
+        // Controls.Contains 只查直接子控件，会把所在页判成 null。
+        var page = _tabs.TabPages.Cast<TabPage>().FirstOrDefault(p => p.Contains(host));
+        if (page != null && _tabs.SelectedTab != page)
         {
-            _tabs.SelectedIndex = _tabs.TabPages.IndexOf(_pageRun);
+            _tabs.SelectedIndex = _tabs.TabPages.IndexOf(page);
             Application.DoEvents();   // 让页签切换和布局完成，否则焦点设置会落空
         }
 
@@ -481,13 +520,13 @@ internal sealed class MainForm : Form
             SetForegroundWindow(Handle);
         }
 
-        if (!_host.Focus() || GetFocus() != _host.Handle)
-            SetFocus(_host.Handle);
+        if (!host.Focus() || GetFocus() != host.Handle)
+            SetFocus(host.Handle);
 
         Application.DoEvents();
 
         // 两个条件都要满足：窗口在前台（SendInput 发给前台窗口）+ 焦点在宿主
-        return GetForegroundWindow() == Handle && GetFocus() == _host.Handle;
+        return GetForegroundWindow() == Handle && GetFocus() == host.Handle;
     }
 
     /// <summary>
@@ -495,11 +534,11 @@ internal sealed class MainForm : Form
     /// 从脚本/后台 shell 启动时，Windows 常会拒绝一次性把前台让给新窗口，
     /// 于是"失焦即停"闸门会在第一个键就触发。重试几轮即可。
     /// </summary>
-    private async Task<bool> EnsureHostReadyAsync(int tries = 12)
+    private async Task<bool> EnsureHostReadyAsync(ImeHost host, int tries = 12)
     {
         for (int i = 0; i < tries; i++)
         {
-            if (ActivateHost()) return true;
+            if (ActivateHost(host)) return true;
             await Task.Delay(400);
         }
         return false;
@@ -610,8 +649,9 @@ internal sealed class MainForm : Form
             return;
         }
 
-        // 控制层入口 2：主窗口失焦 → 停止
-        if (m.Msg == WM_ACTIVATE && _running)
+        // 控制层入口 2：主窗口失焦 → 停止。
+        // 标定例外：PauseOnBlur 模式下失焦只暂停发送（焦点闸门会等待回归），不整场停止。
+        if (m.Msg == WM_ACTIVATE && _running && !_ctrl.PauseOnBlur)
         {
             int state = m.WParam.ToInt32() & 0xFFFF;
             if (state == WA_INACTIVE) _ctrl.RequestStop(StopSource.LostFocus);

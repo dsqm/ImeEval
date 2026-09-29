@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using static ImeEval.Win32.Native;
-
 namespace ImeEval.Win32;
 
 /// <summary>
@@ -78,12 +77,40 @@ public sealed class ImeHost : RichTextBox, IUpTextSink
     public string ReadTextSafe()
         => InvokeRequired ? (string)Invoke(new Func<string>(() => Text)) : Text;
 
-    /// <summary>线程安全清空（含未提交的 composition）。</summary>
+    /// <summary>线程安全清空（含未提交的 composition）。只在真有残留组字时才清，
+    /// 避免对空闲的 IME 反复强制清串（实测会把部分输入法的组字会话搅乱）。</summary>
     public void ResetSafe()
     {
         if (InvokeRequired) { Invoke(new Action(ResetSafe)); return; }
-        ClearIme();
+        if (Composing || !string.IsNullOrEmpty(CompositionString)) ClearIme();
         Reset();
+    }
+
+    /// <summary>线程安全读取组字状态（IME 正在编辑未上屏的拼音串）。</summary>
+    public bool IsComposingSafe()
+        => InvokeRequired ? (bool)Invoke(new Func<bool>(() => _composing)) : _composing;
+
+    /// <summary>线程安全读取焦点状态。</summary>
+    public bool IsFocusedSafe()
+        => InvokeRequired ? (bool)Invoke(new Func<bool>(() => Focused)) : Focused;
+
+    /// <summary>
+    /// 线程安全确保 IME 处于打开（中文）状态；若被切到关闭（英文）则重新打开。
+    /// 返回 true = 本次执行了重开。IME 被外部切走时按键会以英文直插或完全失效，
+    /// 标定/运行前检查一次能自愈最常见的中途"全空"故障。
+    /// </summary>
+    public bool EnsureImeReadySafe()
+    {
+        if (InvokeRequired) return (bool)Invoke(new Func<bool>(EnsureImeReadySafe));
+        IntPtr himc = ImmGetContext(Handle);
+        if (himc == IntPtr.Zero) return false;
+        try
+        {
+            if (ImmGetOpenStatus(himc)) return false;
+            ImmSetOpenStatus(himc, true);
+            return true;
+        }
+        finally { ImmReleaseContext(Handle, himc); }
     }
 
     /// <summary>把键盘焦点夺回来（发送前必做，否则按键发给别的控件）。</summary>
@@ -96,6 +123,11 @@ public sealed class ImeHost : RichTextBox, IUpTextSink
     /// <summary>
     /// 等待上屏稳定：文本连续 <paramref name="stableMs"/> 毫秒不再变化即返回。
     /// 比固定 Sleep 快得多，是吞吐的关键。
+    ///
+    /// 稳定判定对 IME 组字感知：composition 未结束就不算稳定，否则会在提交前
+    /// 把组字串（如 "mw'li'de'vs"）当成最终上屏文本采走，把快档位全部误判为失真。
+    /// 若按键被 IME 整体吞掉（文本一直为空、也未进入组字），走正常静默判定返回空串，
+    /// 由上层按失真处理。
     /// </summary>
     public string WaitStable(int stableMs = 40, int maxMs = 1500, Func<bool>? stop = null)
     {
@@ -107,7 +139,7 @@ public sealed class ImeHost : RichTextBox, IUpTextSink
             Thread.Sleep(8);
             if (stop != null && stop()) break;
             string cur = ReadTextSafe();
-            if (cur != last) { last = cur; stableSince = sw.ElapsedMilliseconds; continue; }
+            if (cur != last || IsComposingSafe()) { last = cur; stableSince = sw.ElapsedMilliseconds; continue; }
             if (sw.ElapsedMilliseconds - stableSince >= stableMs) break;
         }
         return ReadTextSafe();
