@@ -9,3 +9,4 @@ obj/
 
 # 运行时产物（检查点/报告在 %LOCALAPPDATA%\ImeEval，不在仓库里）
 *.log
+publish/

@@ -1,6 +1,6 @@
 @echo off
 rem ===============================================
-rem ImeEval 一键编译：成功自动关窗，失败保留窗口
+rem ImeEval 一键编译发布：Release 框架依赖单文件 → publish\ImeEval.exe
 rem ===============================================
 chcp 65001 >nul
 cd /d "%~dp0"
@@ -31,13 +31,16 @@ if not errorlevel 1 (
 )
 
 echo.
-echo ======== ImeEval 编译中... ========
+echo ======== ImeEval 编译发布中... ========
 echo.
-call dotnet build --nologo -v q
+call dotnet publish --nologo -v q -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 if errorlevel 1 (
     echo.
     echo ======== 编译失败，按任意键关闭窗口 ========
     pause >nul
     exit /b 1
 )
+echo.
+echo ======== 完成：publish\ImeEval.exe（框架依赖单文件，需 .NET 10 桌面运行时） ========
+echo.
 exit /b 0
