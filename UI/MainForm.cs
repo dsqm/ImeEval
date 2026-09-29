@@ -89,6 +89,10 @@ internal sealed class MainForm : Form
     private TabPage _pageRun = null!;       // 宿主所在的页——隐藏的页签里控件拿不到键盘焦点
     private TabPage _pageCalib = null!;     // 标定宿主所在的页——标定全程在本页进行
 
+    // 预估剩余时长：本轮跑表的起点 + 断点恢复前已完成的句数（种子统计）
+    private readonly System.Diagnostics.Stopwatch _runClock = new();
+    private int _etaBaseUnits;
+
     public MainForm()
     {
         Text = "ImeEval — 输入法整句正确度评测";
@@ -244,6 +248,10 @@ internal sealed class MainForm : Form
         _runner = new Runner(_host, _sender, _ctrl);
         _runner.UnitDone += OnUnitDone;
 
+        // 预估剩余的计时起点；断点恢复时种子统计里带 prior 已跑句数，要从分母里扣掉
+        _runClock.Restart();
+        _etaBaseUnits = seed?.DoneUnits ?? 0;
+
         Log($"开始：从第 {startIndex} 个单元，间隔 {opt.IntervalMs}ms，静默期 {opt.SettleMs}ms");
 
         var res = await _runner.RunAsync(_table, opt, startIndex, seed);
@@ -288,7 +296,34 @@ internal sealed class MainForm : Form
         if (!u.Correct || !_cbOnlyError.Checked) AppendResult(u);
         if (u.AutoCommit) _keyPanel.MarkAutoCommit(u.Index);
         if (_lblStats.Parent != null && _runner != null)
-            _lblStats.Text = FormatSummary(_runner.Live.Summary());
+            _lblStats.Text = FormatSummary(_runner.Live.Summary() + "；" + EtaSuffix());
+    }
+
+    /// <summary>
+    /// 实时统计的「预估剩余」后缀：按本轮已跑句的实测均速折算剩余句数。
+    /// 只在运行中拼进实时统计；结束后的最终汇总单独赋值，不含此项。
+    /// </summary>
+    private string EtaSuffix()
+    {
+        int total = _table?.UnitCount ?? 0;
+        int done = _runner?.Live.DoneUnits ?? 0;
+        int remaining = total - done;
+        if (remaining <= 0) return $"预估剩余：0（已跑完）";
+
+        int doneThisSession = done - _etaBaseUnits;
+        if (doneThisSession <= 0) return "预估剩余：计算中…";
+
+        double etaSec = _runClock.Elapsed.TotalSeconds / doneThisSession * remaining;
+        return $"预估剩余：约 {FormatDuration(etaSec)}（剩 {remaining} 句）";
+    }
+
+    private static string FormatDuration(double seconds)
+    {
+        if (seconds < 60) return $"{seconds:F0} 秒";
+        var ts = TimeSpan.FromSeconds(seconds);
+        return ts.TotalHours >= 1
+            ? $"{(int)ts.TotalHours} 时 {ts.Minutes} 分"
+            : $"{ts.Minutes} 分 {ts.Seconds} 秒";
     }
 
     /// <summary>把一条结果按三行式追加到逐句对照：头部信息 / 按键串 / 期望（标错）/ 实际（标错）。</summary>
@@ -477,11 +512,11 @@ internal sealed class MainForm : Form
         var activeHost = _tabs.SelectedTab == _pageCalib ? _calibHost : _host;
         bool focused = activeHost.Focused;
 
-        // 运行中每 500ms 刷新一次实时统计（含句中已发生的 IME 提交次数）
+        // 运行中每 500ms 刷新一次实时统计（含句中已发生的 IME 提交次数与预估剩余）
         if (_running && _runner != null)
         {
             _runner.Live.CommitEvents = _runner.LiveCommits;
-            _lblStats.Text = FormatSummary(_runner.Live.Summary());
+            _lblStats.Text = FormatSummary(_runner.Live.Summary() + "；" + EtaSuffix());
         }
 
         _lblStatus.Text = $"SendInput {InputSender.StructSize}B {(structOk ? "OK" : "错误!")}"
