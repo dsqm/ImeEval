@@ -176,6 +176,7 @@ internal sealed class CorpusPanel : UserControl
     private readonly NumericUpDown _nudMaxChars = Ui.Num(1, 500, 20, 60);
     private readonly NumericUpDown _nudTailDelay = Ui.Num(0, 5000, 0, 110);
     private readonly CheckBox _cbPunct = new() { Text = "根据标点断句", Checked = true, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
+    private readonly CheckBox _cbPhrase = new() { Text = "词组优先", Checked = true, AutoSize = true, Padding = new Padding(0, 6, 0, 0) };
     private readonly TextBox _tbCommit = new() { Text = "_", Width = 50 };
 
     private CodeTable _code = new();
@@ -200,6 +201,7 @@ internal sealed class CorpusPanel : UserControl
         SplitByPunctuation = _cbPunct.Checked,
         Punctuation = _punct,
         CommitKeys = _tbCommit.Text.Length == 0 ? "_" : _tbCommit.Text,
+        PhraseFirst = _cbPhrase.Checked,
     };
 
     public CorpusPanel()
@@ -251,6 +253,7 @@ internal sealed class CorpusPanel : UserControl
             Ui.Lbl("句尾等待ms:"), _nudTailDelay,
             Ui.Lbl("上屏键:"), _tbCommit,
             _cbPunct,
+            _cbPhrase,
             Ui.Btn("设置标点按键…", (_, _) => EditPunctuation()),
         });
 
@@ -301,6 +304,7 @@ internal sealed class CorpusPanel : UserControl
         _nudTailDelay.Value = Math.Clamp(_settings.TailDelayMs, _nudTailDelay.Minimum, _nudTailDelay.Maximum);
         _tbCommit.Text = string.IsNullOrEmpty(_settings.CommitKeys) ? "_" : _settings.CommitKeys;
         _cbPunct.Checked = _settings.PunctCommits;
+        _cbPhrase.Checked = _settings.PhraseFirst;
 
         ReloadCodeList(_settings.Code);
         RefreshArticleList(_settings.Article);
@@ -330,12 +334,17 @@ internal sealed class CorpusPanel : UserControl
             _lblCodeStatus.Text = $"（\\码表 里没有 .txt 码表）";
     }
 
+    /// <summary>码表状态文案：单字数 + 词组数（词组会整词一次输入，值得显式提示）。</summary>
+    private string CodeStatusText(string prefix)
+        => $"{prefix}：{_code.Count} 字" +
+           (_code.PhraseCount > 0 ? $" + {_code.PhraseCount} 词组（最长 {_code.MaxPhraseElements} 字）" : "");
+
     private void LoadCodeFile(string path)
     {
         try
         {
             _code = CodeTable.Load(path);
-            _lblCodeStatus.Text = $"{Path.GetFileName(path)}：{_code.Count} 字";
+            _lblCodeStatus.Text = CodeStatusText(Path.GetFileName(path));
         }
         catch (Exception ex)
         {
@@ -377,7 +386,7 @@ internal sealed class CorpusPanel : UserControl
         try
         {
             _code = CodeTable.Load(path);
-            _lblCodeStatus.Text = $"指定文件：{path}（{_code.Count} 字）";
+            _lblCodeStatus.Text = CodeStatusText($"指定文件：{path}");
         }
         catch (Exception ex)
         {
@@ -438,6 +447,7 @@ internal sealed class CorpusPanel : UserControl
         _settings.TailDelayMs = (int)_nudTailDelay.Value;
         _settings.CommitKeys = _tbCommit.Text;
         _settings.PunctCommits = _cbPunct.Checked;
+        _settings.PhraseFirst = _cbPhrase.Checked;
         _settings.Save();
     }
 }
@@ -536,7 +546,13 @@ internal sealed class KeyTablePanel : UserControl
                     {
                         if (t.Kind == KeyTokenKind.Key && t.Target != null)
                         {
-                            row.Cols.Add((t.Keys, ei < elems.Count ? elems[ei++] : ""));
+                            // TargetText 优先：词组整词占一格（编码在上、整词在下），
+                            // 单字也是一个完整文本元素（代理对不会被拆成半个字符）
+                            string txt = t.TargetText.Length > 0
+                                ? t.TargetText
+                                : (ei < elems.Count ? elems[ei] : t.Target.Value.ToString());
+                            row.Cols.Add((t.Keys, txt));
+                            ei += ElementCount(txt);
                         }
                         else
                         {
@@ -578,6 +594,10 @@ internal sealed class KeyTablePanel : UserControl
             float w2 = g.MeasureString(text, _fontText).Width;
             return Math.Max(w1, w2) + 6;
         }
+
+        /// <summary>文本元素个数：代理对 / 组合字符算 1 个。</summary>
+        private static int ElementCount(string s)
+            => s.Length == 0 ? 0 : new StringInfo(s).LengthInTextElements;
 
         private static List<string> TextElements(string s)
         {

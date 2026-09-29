@@ -28,8 +28,15 @@ public sealed class KeyToken
     /// <summary>实际要发送的按键串。语法见 KeySeq：Commit 通常为 "_"（空格）。</summary>
     public string Keys { get; set; } = "";
 
-    /// <summary>该 token 对应的目标字符（Key 类型才有）。</summary>
+    /// <summary>该 token 对应的目标字符（Key 类型才有）。代理对只取高位代理，完整文本看 TargetText。</summary>
     public char? Target { get; set; }
+
+    /// <summary>
+    /// 该 token 产出的完整目标文本（Key 类型才有）：
+    /// 单字 = 整个文本元素（代理对是完整一对），词组 = 整词，多字标点 = 整串。
+    /// 为空时回落到 Target。
+    /// </summary>
+    public string TargetText { get; set; } = "";
 
     [JsonIgnore] public bool IsCommit => Kind == KeyTokenKind.Commit;
 
@@ -44,7 +51,7 @@ public sealed class KeyToken
         _ => Keys.Replace(' ', '_'),
     };
 
-    public KeyToken Clone() => new() { Kind = Kind, Keys = Keys, Target = Target };
+    public KeyToken Clone() => new() { Kind = Kind, Keys = Keys, Target = Target, TargetText = TargetText };
 }
 
 /// <summary>

@@ -14,7 +14,6 @@ internal sealed class MainForm : Form
     // 便携化：所有运行时数据都放 exe 文件夹的 data\ 下（不碰注册表 / 用户目录）
     private static readonly string AppDir = CorpusPanel.DataDir;
     private static string CheckpointFile => Path.Combine(AppDir, "checkpoint.json");
-    private static string LastRunFile => Path.Combine(AppDir, "last-run.json");
     private static string SessionLogFile => Path.Combine(AppDir, "session.log");
 
     private readonly ImeHost _host = new()
@@ -25,7 +24,7 @@ internal sealed class MainForm : Form
         BorderStyle = BorderStyle.FixedSingle,
         BackColor = Color.White,
         // 必须显式打开 IME：不设的话宿主默认走英文，拼音会被当普通字符直接插进去，
-        // 输入法完全不参与（表现为"上屏文本 == 按键串"，CER 爆表）
+        // 输入法完全不参与（表现为"上屏文本 == 按键串"，错字率爆表）
         ImeMode = ImeMode.On,
         DetectUrls = false,
         AutoWordSelection = false,
@@ -152,9 +151,6 @@ internal sealed class MainForm : Form
             _btnStart, _btnStop, _btnResume,
             Ui.Lbl("按键间隔ms:"), _nudInterval,
             Ui.Lbl("静默期ms:"), _nudSettle,
-            Ui.Btn("导出 JSON", (_, _) => Export("json")),
-            Ui.Btn("导出 CSV", (_, _) => Export("csv")),
-            Ui.Btn("导出 HTML", (_, _) => Export("html")),
         });
 
         // 输入宿主
@@ -246,7 +242,6 @@ internal sealed class MainForm : Form
             Log($"其中 {_runner.AutoCommitSkips} 句检测到高置信度自动上屏，已跳过上屏键（按键表页句尾标绿⏎）。");
         Log(res.Stats.Summary());
         _lblStats.Text = FormatSummary(res.Stats.Summary());
-        try { Exporter.ToJson(LastRunFile, res, BuildMeta()); } catch { }
     }
 
     private async Task ResumeAsync()
@@ -282,7 +277,9 @@ internal sealed class MainForm : Form
     {
         AppendRt($"{u.Index + 1}. ", Color.DimGray);
         AppendRt(u.Correct ? "✓ " : "✗ ", u.Correct ? Color.Green : Color.Red);
-        AppendRt($"S{u.Sub} D{u.Del} I{u.Ins}  {u.Ms}ms  上屏{u.CommitEvents}" + (u.AutoCommit ? " 自动上屏" : ""),
+        AppendRt($"替{u.Sub} 删{u.Del} 插{u.Ins}  {u.Ms}ms  上屏{u.CommitEvents}" +
+                 $"  码长{u.CodeLength:F2}（{u.KeyCount}键/{u.CharCount}字）" +
+                 (u.AutoCommit ? " 自动上屏" : ""),
                  u.Correct ? Color.DimGray : Color.Black);
         AppendRt(Environment.NewLine, Color.Black);
 
@@ -375,54 +372,9 @@ internal sealed class MainForm : Form
         Log("标定结束：" + r);
     }
 
-    // ───────────────────────── 导出 ─────────────────────────
-
-    private ReportMeta BuildMeta() => new()
-    {
-        ImeName = Native.GetImeName(),
-        IntervalMs = (int)_nudInterval.Value,
-        CodeTablePath = _corpus.CodeTablePath,
-    };
-
-    private void Export(string kind)
-    {
-        if (_last == null || _last.Units.Count == 0)
-        {
-            Log("没有可导出的结果——先跑一轮。");
-            return;
-        }
-        using var dlg = new SaveFileDialog
-        {
-            Filter = kind switch
-            {
-                "json" => "JSON|*.json",
-                "csv" => "CSV|*.csv",
-                _ => "HTML|*.html",
-            },
-            FileName = $"imebench-{DateTime.Now:yyyyMMdd-HHmmss}.{kind}",
-        };
-        if (dlg.ShowDialog() != DialogResult.OK) return;
-
-        try
-        {
-            var meta = BuildMeta();
-            switch (kind)
-            {
-                case "json": Exporter.ToJson(dlg.FileName, _last, meta); break;
-                case "csv": Exporter.ToCsv(dlg.FileName, _last); break;
-                default: Exporter.ToHtml(dlg.FileName, _last, meta); break;
-            }
-            Log("已导出：" + dlg.FileName);
-        }
-        catch (Exception ex)
-        {
-            Log("导出失败：" + ex.Message);
-        }
-    }
-
     // ──────────────────── 无人值守端到端烟测 ────────────────────
     // 用法：ImeBench.exe --smoke <码表> <文章> [间隔ms]
-    // 省略间隔时先自动标定再跑。结果导出到 %LOCALAPPDATA%\ImeBench\smoke-*
+    // 省略间隔时先自动标定再跑。完整日志落盘 data\smoke.log
 
     public async Task<int> RunSmokeAsync(string codePath, string articlePath, int? intervalMs)
     {
@@ -448,15 +400,6 @@ internal sealed class MainForm : Form
             }
 
             await StartAsync(0, null);
-
-            if (_last != null && _last.Units.Count > 0)
-            {
-                var meta = BuildMeta();
-                Exporter.ToJson(Path.Combine(AppDir, "smoke-report.json"), _last, meta);
-                Exporter.ToCsv(Path.Combine(AppDir, "smoke-report.csv"), _last);
-                Exporter.ToHtml(Path.Combine(AppDir, "smoke-report.html"), _last, meta);
-                Log("报告已写入 " + AppDir);
-            }
 
             SaveLog(Path.Combine(AppDir, "smoke.log"));
             return _last != null && _last.Reason == RunEndReason.Completed ? 0 : 1;

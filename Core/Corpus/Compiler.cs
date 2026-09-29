@@ -31,6 +31,12 @@ public sealed class CompileOptions
     /// <summary>换行直接切分单元，收尾与普通句子相同（句尾延迟 + 上屏键）。</summary>
     public bool SkipNewline { get; set; } = true;
 
+    /// <summary>
+    /// 词组优先：码表里左列含 2 个及以上文本元素的条目是词组，
+    /// 编译时最长优先匹配，命中则整词一次输入（不再逐字打）。
+    /// 关掉则只看单字，方便对比「有没有词组」的差异。
+    /// </summary>
+    public bool PhraseFirst { get; set; } = true;
 }
 
 public sealed class CompileResult
@@ -43,26 +49,31 @@ public sealed class CompileResult
     /// <summary>码表覆盖、参与测试的字数。</summary>
     public int CoveredChars { get; set; }
 
-    /// <summary>码表没有、被直接忽略排除的字数（不计入 CER 分母）。</summary>
+    /// <summary>码表没有、被直接忽略排除的字数（不计入错字率分母）。</summary>
     public int OovSkipped { get; set; }
 
     /// <summary>一字多码的字数（取首码）。</summary>
     public int Ambiguous { get; set; }
 
+    /// <summary>命中词组、整词一次输入的处数。</summary>
+    public int PhraseHits { get; set; }
+
     public override string ToString()
         => $"单元 {Table.UnitCount} 个 / 按键 {Table.TotalKeys} 个 / 覆盖 {CoveredChars}/{SourceChars} 字" +
-           $" / OOV 跳过 {OovSkipped} / 多音字取首码 {Ambiguous}";
+           $" / OOV 跳过 {OovSkipped} / 多音字取首码 {Ambiguous} / 词组命中 {PhraseHits}";
 }
 
 /// <summary>
 /// 把「文章 + 码表」编译成可执行的按键表。
 ///
 /// 规则（2026-09-08 语料页重构版）：
-///   1. 码表没有的字符（OOV）直接忽略排除，不出清单、不计入期望文本（= 不计入 CER 分母）；
+///   1. 码表没有的字符（OOV）直接忽略排除，不出清单、不计入期望文本（= 不计入错字率分母）；
 ///   2. 一字多码取首码，不再打断流程确认；
 ///   3. 上屏单元按「字数」切分（代理对算 1 字），默认 20 字；
 ///   4. 句尾等待 &gt; 0 时，每个单元的收尾键（上屏键或标点键）之前插入 {DELAY=n}；
-///   5. 标点顶屏：标点收尾不加空格确认键（标点自己顶屏），但同样享受句尾等待。
+///   5. 标点顶屏：标点收尾不加空格确认键（标点自己顶屏），但同样享受句尾等待；
+///   6. 词组优先：码表左列 ≥2 个文本元素 = 词组，最长匹配命中即整词一次输入（优先于单字）。
+///      匹配只在文本元素边界上进行，代理对 / 组合字符不会被切开。
 /// </summary>
 public static class Compiler
 {
@@ -95,6 +106,10 @@ public static class Compiler
             unitChars = 0;
         }
 
+        // 文本元素起点表：词组与标点都在这些边界上取候选，
+        // 保证代理对 / 组合字符永远不会被从中间切开
+        int[] starts = BuildElementStarts(article);
+
         // 按字符下标遍历（兼容代理对），以便多字标点（如 …… 一次按键出两字）整体匹配
         int i = 0;
         while (i < article.Length)
@@ -102,6 +117,10 @@ public static class Compiler
             int elemLen = StringInfo.GetNextTextElementLength(article, i);
             string elem = article.Substring(i, elemLen);
             char c = elem[0];
+
+            // i 恒为某个文本元素的起点（每轮消费的都是整数个元素）
+            int elemIdx = Array.BinarySearch(starts, i);
+            if (elemIdx < 0) elemIdx = 0;
 
             if (opt.SkipNewline && (c == '\r' || c == '\n'))
             {
@@ -126,19 +145,32 @@ public static class Compiler
 
             string keys;
             int consume = elemLen;
+
+            // 词组优先：最长匹配命中则整词一次输入，优先级高于单字、低于标点配置
+            int phraseEnd = i;
+            string? phraseCode = punct == null && opt.PhraseFirst
+                ? table.MatchPhraseAt(article, i, elemIdx, starts, out phraseEnd)
+                : null;
+
             if (punct != null)
             {
                 keys = opt.Punctuation[punct];
                 consume = punct.Length;      // 一次按键可能产出多个字符（…… / ——）
             }
-            else if (table.TryGet(c, out var codes))
+            else if (phraseCode != null)
+            {
+                keys = phraseCode;
+                consume = phraseEnd - i;     // 整词长度（以 char 计，但端点必然落在元素边界上）
+                res.PhraseHits++;
+            }
+            else if (table.TryGet(elem, out var codes))
             {
                 if (codes.Count > 1) res.Ambiguous++;
                 keys = codes[0];
             }
             else
             {
-                res.OovSkipped++;   // 直接忽略排除，不计入期望文本（= 不计入 CER 分母）
+                res.OovSkipped++;   // 直接忽略排除，不计入期望文本（= 不计入错字率分母）
                 i += elemLen;
                 continue;
             }
@@ -150,7 +182,10 @@ public static class Compiler
             if (opt.SeparatorKeys.Length > 0 && unit.Tokens.Count > 0 && unit.Tokens[^1].Kind == KeyTokenKind.Key)
                 unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Sep, Keys = opt.SeparatorKeys });
 
-            unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Key, Keys = keys, Target = c });
+            // TargetText 记下这个 token 产出的完整文本：单字 = 该文本元素（代理对整对），
+            // 词组 = 整词，多字标点 = 整串。预览与统计都靠它，避免按 char 拆错。
+            string target = article.Substring(i, consume);
+            unit.Tokens.Add(new KeyToken { Kind = KeyTokenKind.Key, Keys = keys, Target = target[0], TargetText = target });
             string chunk = article.Substring(i, consume);
             expected.Append(chunk);          // 整体入期望文本，代理对/多字标点不会被拆开
             res.CoveredChars += new StringInfo(chunk).LengthInTextElements;
@@ -169,6 +204,23 @@ public static class Compiler
         return res;
     }
 
+    /// <summary>
+    /// 全文的文本元素起点表（长度 = 元素数 + 1，末位是 article.Length）。
+    /// 词组/标点的候选一律用这里的边界切，代理对与组合字符不会被切开。
+    /// </summary>
+    private static int[] BuildElementStarts(string article)
+    {
+        var starts = new List<int>(article.Length + 1);
+        int p = 0;
+        while (p < article.Length)
+        {
+            starts.Add(p);
+            p += StringInfo.GetNextTextElementLength(article, p);
+        }
+        starts.Add(article.Length);
+        return starts.ToArray();
+    }
+
     private static bool IsDelay(KeyToken t)
         => t.Kind == KeyTokenKind.Key && t.Keys.Contains("{DELAY=", StringComparison.OrdinalIgnoreCase);
 
@@ -185,6 +237,9 @@ public sealed class CorpusSettings
     public int TailDelayMs { get; set; } = 0;
     public string CommitKeys { get; set; } = "_";
     public bool PunctCommits { get; set; } = true;   // 兼容旧设置（= SplitByPunctuation）
+
+    /// <summary>词组优先（码表左列 ≥2 字的条目整词一次输入）。</summary>
+    public bool PhraseFirst { get; set; } = true;
 
     /// <summary>标点配置的原始文本，落盘用。</summary>
     public string PunctKeys { get; set; } = "";

@@ -35,7 +35,7 @@ internal static class Program
             return;
         }
 
-        // --smoke <码表> <文章> [间隔ms] 无人值守端到端跑一轮并导出报告
+        // --smoke <码表> <文章> [间隔ms] 无人值守端到端跑一轮
         int si = Array.FindIndex(args, a => a.Equals("--smoke", StringComparison.OrdinalIgnoreCase));
         if (si >= 0 && args.Length >= si + 3)
         {

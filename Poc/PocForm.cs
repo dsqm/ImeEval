@@ -398,7 +398,7 @@ public sealed class PocForm : Form
     /// <summary>
     /// 丢弃上一次残留的 composition。
     /// 实测教训：未上屏的拼音会残留在 IME 里串进下一次结果，
-    /// 必须每次开跑前清干净，否则 CER 统计全是噪声。
+    /// 必须每次开跑前清干净，否则 错字率统计全是噪声。
     /// </summary>
     private async Task<bool> ClearLeftoverAsync()
     {

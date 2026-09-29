@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using ImeBench.Win32;
 
@@ -204,6 +205,8 @@ public sealed class Runner
 
             var ur = _verify.Compare(i, unit.DisplayText, expected, actual, sw.ElapsedMilliseconds);
             ur.AutoCommit = autoCommit;
+            ur.KeyCount = CountKeys(unit, autoCommit);
+            ur.CharCount = new StringInfo(expected).LengthInTextElements;
             var segments = _verify.ReadCommitEvents(_commitStart);
             ur.CommitSegments = segments.ToList();
             ur.CommitEvents = segments.Count;
@@ -223,6 +226,8 @@ public sealed class Runner
             Live.Del = result.Stats.Del;
             Live.Ins = result.Stats.Ins;
             Live.CommitEvents = result.Stats.CommitEvents;
+            Live.KeyStrokes = result.Stats.KeyStrokes;
+            Live.TextChars = result.Stats.TextChars;
             Live.ElapsedMs = result.Stats.ElapsedMs;
 
             UnitDone?.Invoke(ur);
@@ -241,6 +246,21 @@ public sealed class Runner
             SaveCheckpoint(table, opt.CheckpointPath, result.ResumeIndex, result.Stats);
 
         _verify.Reset();
+    }
+
+    /// <summary>
+    /// 本单元实际打出去的按键数：全部 token 的按键数之和（{DELAY=} 不计按键）。
+    /// 自动上屏时上屏键根本没发，要减掉，否则码长会虚高。
+    /// </summary>
+    private static int CountKeys(KeyUnit unit, bool autoCommit)
+    {
+        int n = unit.Tokens.Sum(t => KeySeq.CountKeys(t.Keys));
+        if (autoCommit)
+        {
+            var ct = unit.Tokens.LastOrDefault(t => t.IsCommit);
+            if (ct != null) n -= KeySeq.CountKeys(ct.Keys);
+        }
+        return Math.Max(0, n);
     }
 
     private static RunEndReason Map(StopSource src) => src switch

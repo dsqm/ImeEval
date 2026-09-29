@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace ImeBench.Core;
@@ -159,6 +160,18 @@ public sealed class UnitResult
     public int Ins { get; set; }
     public long Ms { get; set; }
 
+    /// <summary>
+    /// 本单元实际发送的按键数（含上屏键与音节分隔符；{DELAY=} 不计）。
+    /// 输入法高置信度自动上屏、上屏键被跳过时，那一个键也不计。
+    /// </summary>
+    public int KeyCount { get; set; }
+
+    /// <summary>本单元期望文本的字数（文本元素口径：代理对 / 组合字符算 1 字）。</summary>
+    public int CharCount { get; set; }
+
+    /// <summary>本句码长 = 按键数 ÷ 字数（长句中 autoCommit 跳过上屏键的那一个键不计）。</summary>
+    public double CodeLength => CharCount == 0 ? 0 : (double)KeyCount / CharCount;
+
     /// <summary>true = 输入法高置信度自动上屏，本次跳过了上屏键。</summary>
     public bool AutoCommit { get; set; }
 
@@ -176,8 +189,8 @@ public sealed class UnitResult
 
 /// <summary>
 /// 汇总统计。
-///   CER = 错字数 / 期望总字数
-///   SER = 错句数 / 总句数（默认按"上屏次数"口径）
+///   错字率 = 错字数 / 期望总字数
+///   错句率 = 错句数 / 总句数（默认按"上屏次数"口径）
 /// </summary>
 public sealed class BenchStats
 {
@@ -195,8 +208,13 @@ public sealed class BenchStats
     /// <summary>IME 真正提交文本的事件总数（GCS_RESULTSTR 次数；一字一屏会远大于句数）。</summary>
     public int CommitEvents { get; set; }
 
-    public int ErrorChars => Sub + Del + Ins;
+    /// <summary>实际发送的按键总数（含上屏键与音节分隔符）。</summary>
+    public int KeyStrokes { get; set; }
 
+    /// <summary>期望文本的字数（文本元素口径：代理对 / 组合字符算 1 字）。</summary>
+    public int TextChars { get; set; }
+
+    public int ErrorChars => Sub + Del + Ins;
     public double Cer => ExpectedChars == 0 ? 0 : (double)ErrorChars / ExpectedChars;
     public double Ser => DoneUnits == 0 ? 0 : (double)ErrorUnits / DoneUnits;
     public double SentenceSer => DoneSentences == 0 ? 0 : (double)ErrorSentences / DoneSentences;
@@ -205,6 +223,9 @@ public sealed class BenchStats
     public double Accuracy => 1.0 - Cer;
 
     public double UnitsPerSec => ElapsedMs == 0 ? 0 : DoneUnits * 1000.0 / ElapsedMs;
+
+    /// <summary>码长 = 平均按键次数 = 按键数 ÷ 字数（含上屏键口径）。</summary>
+    public double CodeLength => TextChars == 0 ? 0 : (double)KeyStrokes / TextChars;
 
     public void Add(UnitResult u, bool closesSentence)
     {
@@ -216,6 +237,8 @@ public sealed class BenchStats
         Del += u.Del;
         Ins += u.Ins;
         CommitEvents += u.CommitEvents;
+        KeyStrokes += u.KeyCount;
+        TextChars += u.CharCount;
 
         _openErrors += u.Errors;
         if (closesSentence)
@@ -241,14 +264,17 @@ public sealed class BenchStats
         Del = o.Del;
         Ins = o.Ins;
         CommitEvents = o.CommitEvents;
+        KeyStrokes = o.KeyStrokes;
+        TextChars = o.TextChars;
         ElapsedMs = o.ElapsedMs;
         _openErrors = 0;
     }
 
     public string Summary()
-        => $"上屏 {DoneUnits} 句，IME 实际提交 {CommitEvents} 次，错 {ErrorUnits} 句（SER {Ser:P2}）；" +
-           $"期望 {ExpectedChars} 字，错 {ErrorChars} 字（CER {Cer:P2}，准确率 {Accuracy:P2}）；" +
+        => $"上屏 {DoneUnits} 句，IME 实际提交 {CommitEvents} 次，错 {ErrorUnits} 句（错句率 {Ser:P2}）；" +
+           $"期望 {ExpectedChars} 字，错 {ErrorChars} 字（错字率 {Cer:P2}，准确率 {Accuracy:P2}）；" +
            $"替换 {Sub} / 删除 {Del} / 插入 {Ins}；" +
-           $"自然句 {DoneSentences} 句，错 {ErrorSentences} 句（SER {SentenceSer:P2}）；" +
+           $"自然句 {DoneSentences} 句，错 {ErrorSentences} 句（错句率 {SentenceSer:P2}）；" +
+           $"码长 {CodeLength:F2} 键/字（按键 {KeyStrokes} ÷ 字数 {TextChars}）；" +
            $"耗时 {ElapsedMs / 1000.0:F1}s（{UnitsPerSec:F1} 句/秒）";
 }

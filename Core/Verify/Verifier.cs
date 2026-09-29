@@ -79,7 +79,7 @@ public sealed class Verifier
         };
     }
 
-    /// <summary>该期望段是否收束了一个自然句（用于自然句 SER 口径）。</summary>
+    /// <summary>该期望段是否收束了一个自然句（用于自然句错句率口径）。</summary>
     public static bool ClosesSentence(string expected)
         => expected.Length > 0 && "。！？!?…".Contains(expected[^1]);
 }
