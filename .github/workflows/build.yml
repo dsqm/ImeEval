@@ -1,0 +1,29 @@
+name: build
+
+# 每次推送都编译；产物作为 artifact 保留，供手动下载验证。
+on:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'   # global.json 要求 >= 10.0.400
+
+      - name: Build
+        shell: cmd
+        run: call build.bat
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ImeEval-${{ github.sha }}
+          path: publish/ImeEval.exe
+          if-no-files-found: error

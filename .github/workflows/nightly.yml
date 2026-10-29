@@ -1,0 +1,115 @@
+name: nightly
+
+# 每夜版（预发布）：固定 tag `nightly`，永远只有一个。
+#   - 每天北京时间 0 点（UTC 16:00）检查一次。
+#   - HEAD 的 commit SHA 和上次构建相同（期间没推送）→ 跳过。
+#   - 有新提交 → 就地更新：覆盖 exe、重写说明，不删不建。
+#   - 若最新正式版比 nightly Release 晚发布（期间发了正式版）
+#     → 删掉重建，让每夜版重新排到 Release 列表最上面。
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  nightly:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # 完整历史 + tag，用于生成「自上次正式版以来的提交」列表
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'   # global.json 要求 >= 10.0.400
+
+      - name: Build
+        shell: cmd
+        run: call build.bat
+
+      - name: Update nightly release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          repo="$GITHUB_REPOSITORY"
+          sha="${GITHUB_SHA:0:8}"
+          # 北京时间 = UTC+8。TZ=Asia/Shanghai 在 runner 的 Git Bash 里
+          # 会静默失效（缺 zoneinfo），改用 UTC 加 8 小时换算。
+          today=$(date -u -d "+8 hours" +%Y.%m.%d)
+
+          # ---- 收集信息（releases/latest 不含预发布，返回的就是最新正式版）----
+          stable=$(gh api "repos/$repo/releases/latest" 2>/dev/null || true)
+          stable_tag=$(echo "$stable" | jq -r '.tag_name // empty')
+          stable_pub=$(echo "$stable" | jq -r '.published_at // empty')
+
+          have=0
+          created=""
+          if gh release view nightly -R "$repo" >/dev/null 2>&1; then
+            have=1
+            created=$(gh release view nightly -R "$repo" --json createdAt --jq .createdAt)
+          fi
+
+          # ---- 生成提交列表（最多 5 条，SHA 链接到 commit 页）----
+          if [ -n "$stable_tag" ] && git rev-parse -q --verify "refs/tags/$stable_tag" >/dev/null; then
+            log=$(git log --oneline -5 "$stable_tag..HEAD")
+            range="自 $stable_tag 以来的提交（[查看全部](https://github.com/$repo/compare/$stable_tag...nightly)）："
+          else
+            log=$(git log --oneline -5)
+            range="最近的提交："
+          fi
+
+          # ---- 说明内容 ----
+          {
+            echo "每夜版（预发布）：构建于 $today"
+            echo ""
+            echo "commit: $sha"
+            echo ""
+            echo "$range"
+            if [ -z "$log" ]; then
+              echo "（无新提交，与 $stable_tag 内容相同）"
+            else
+              echo "$log" | while read -r line; do
+                s=${line%% *}; m=${line#* }
+                echo "- [\`$s\`](https://github.com/$repo/commit/$s) $m"
+              done
+            fi
+          } > notes.md
+
+          # ---- 正式版更新过 → 删掉重建，保持每夜版在最上面 ----
+          if [ "$have" = 1 ] && [ -n "$stable_pub" ]; then
+            if [ "$(date -d "$stable_pub" +%s)" -ge "$(date -d "$created" +%s)" ]; then
+              echo "stable released after nightly -> recreate"
+              gh release delete nightly -R "$repo" --yes --cleanup-tag
+              have=0
+            fi
+          fi
+
+          # ---- 不存在 → 新建 ----
+          if [ "$have" = 0 ]; then
+            gh release create nightly "publish/ImeEval.exe" -R "$repo" \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "Nightly Build" \
+              --notes-file notes.md
+            exit 0
+          fi
+
+          # ---- 没推送 → 跳过（比对说明里记录的 SHA）----
+          body=$(gh release view nightly -R "$repo" --json body --jq .body)
+          recorded=$(echo "$body" | sed -n 's/^commit: //p')
+          if [ "$recorded" = "$sha" ]; then
+            echo "no new commits since last nightly -> skip"
+            exit 0
+          fi
+
+          # ---- 有新提交 → 就地更新 ----
+          # tag 还停在旧提交，先移到 HEAD，Release 的源码快照和对比链接才正确
+          git push -f origin "$GITHUB_SHA:refs/tags/nightly"
+          gh release upload nightly "publish/ImeEval.exe" -R "$repo" --clobber
+          gh release edit nightly -R "$repo" \
+            --title "Nightly Build" \
+            --notes-file notes.md

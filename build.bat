@@ -25,7 +25,7 @@ if not errorlevel 1 (
     echo.
     echo [错误] 检测到 ImeEval.exe 正在运行，请先关闭程序窗口再编译。
     echo.
-    pause
+    if not defined CI pause
     exit /b 1
 )
 
@@ -35,8 +35,8 @@ echo.
 call dotnet publish --nologo -v q -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -o publish
 if errorlevel 1 (
     echo.
-    echo ======== 编译失败，按任意键关闭窗口 ========
-    pause >nul
+    echo ======== 编译失败 ========
+    if not defined CI pause >nul
     exit /b 1
 )
 echo.
