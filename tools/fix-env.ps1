@@ -44,7 +44,7 @@ Write-Host "Verifying NuGet:" -ForegroundColor Cyan
 
 Write-Host ""
 Write-Host "Verifying build of ImeEval:" -ForegroundColor Cyan
-Set-Location <repo root>
+Set-Location (Split-Path -Parent $PSScriptRoot)
 & dotnet build -v q --nologo
 
 Write-Host ""
