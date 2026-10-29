@@ -7,6 +7,6 @@ obj/
 .vs/
 .idea/
 
-# 运行时产物（检查点/报告在 %LOCALAPPDATA%\ImeEval，不在仓库里）
+# 运行时产物（程序数据在 exe 旁的 data\，发布目录 publish\ 不进仓库）
 *.log
 publish/
